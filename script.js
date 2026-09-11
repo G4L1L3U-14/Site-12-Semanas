@@ -598,6 +598,7 @@ function addChecklist() {
 function deleteChecklist(id) {
   openModal({
     title: "Excluir esse checklist inteiro?",
+
     type: "confirm",
     confirmLabel: "Excluir",
     onConfirm: () => {
@@ -652,11 +653,27 @@ function deleteChecklistItem(checklistId, itemId) {
 function clearCheckedItems(checklistId) {
   const list = checklists.find(c => c.id === checklistId);
   if (!list) return;
-  list.items = (list.items || []).filter(i => !i.done);
+  (list.items || []).forEach(i => { i.done = false; });
   saveState();
   loadChecklistScreen();
 }
 // fim clearCheckedItems
+
+function deleteAllChecklistItems(checklistId) {
+  openModal({
+    title: "Excluir TODOS os itens desse checklist? Não tem como desfazer.",
+    type: "confirm",
+    confirmLabel: "Excluir todos",
+    onConfirm: () => {
+      const list = checklists.find(c => c.id === checklistId);
+      if (!list) return;
+      list.items = [];
+      saveState();
+      loadChecklistScreen();
+    }
+  });
+}
+// fim deleteAllChecklistItems
 
 function loadChecklistScreen() {
   const body = document.getElementById("checklistManagerBody");
@@ -681,6 +698,8 @@ function loadChecklistScreen() {
         ${isOpen ? `
           <div class="task-actions" onclick="event.stopPropagation();">
             <button class="aura-btn" onclick="clearCheckedItems('${cl.id}')"><i class="fa-solid fa-broom"></i> Limpar marcados</button>
+            <button class="aura-btn" onclick="shareChecklistViaChat('${cl.id}')"><i class="fa-solid fa-share"></i> Compartilhar</button>
+            <button class="aura-danger" onclick="deleteAllChecklistItems('${cl.id}')"><i class="fa-solid fa-trash-can"></i> Excluir todos</button>
             <button class="aura-danger" onclick="deleteChecklist('${cl.id}')"><i class="fa-solid fa-trash"></i> Excluir</button>
           </div>
           <div class="task-days-row" onclick="event.stopPropagation();" style="flex-direction:column; align-items:stretch;">
@@ -1180,7 +1199,7 @@ function adminGrantXP() {
           }).catch(e => showToast("Erro: " + e.message));
         }
       });
-    }
+      }
   });
 }
 // fim adminGrantXP
