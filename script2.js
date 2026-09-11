@@ -298,7 +298,7 @@ function searchFriends() {
           ${btn}
         </div>`;
     });
-          resultsBox.innerHTML = rows || "<p style='font-size:12px;opacity:.7;'>Ninguém encontrado.</p>";
+    resultsBox.innerHTML = rows || "<p style='font-size:12px;opacity:.7;'>Ninguém encontrado.</p>";
   }).catch(e => { resultsBox.innerHTML = `<p>Erro: ${e.message}</p>`; });
 }
 // fim searchFriends
@@ -466,6 +466,8 @@ function getChatId(otherUid) {
 }
 // fim getChatId
 
+let chatMessagesCache = {};
+
 function openChat(otherUid, otherNick) {
   currentChatId = getChatId(otherUid);
   currentChatOtherUid = otherUid;
@@ -484,14 +486,27 @@ function openChat(otherUid, otherNick) {
     .onSnapshot(snap => {
       const box = document.getElementById("chatMessagesBox");
       let html = "";
+      chatMessagesCache = {};
       snap.forEach(d => {
         const m = d.data();
+        chatMessagesCache[d.id] = m;
         const mine = m.fromUid === currentUser.uid;
-        html += `<div style="display:flex; justify-content:${mine ? "flex-end" : "flex-start"}; margin:6px 0;">
-          <div style="max-width:75%; padding:8px 12px; border-radius:14px; background:${mine ? "rgba(46,204,113,0.25)" : "rgba(0,0,0,0.4)"}; border:1px solid rgba(46,204,113,0.3); font-size:13px;">
-            ${m.text}
-          </div>
-        </div>`;
+
+        if (m.shareType) {
+          const icon = m.shareType === "checklist" ? "fa-list-check" : "fa-calendar-days";
+          html += `<div style="display:flex; justify-content:${mine ? "flex-end" : "flex-start"}; margin:6px 0;">
+            <div style="max-width:80%; padding:10px 14px; border-radius:14px; background:rgba(46,204,113,0.12); border:1px solid rgba(46,204,113,0.4); font-size:13px;">
+              <i class="fa-solid ${icon}"></i> ${m.text}
+              ${!mine ? `<button class="aura-btn" style="margin-top:8px; display:block; width:100%;" onclick="acceptSharedMessage('${d.id}')"><i class="fa-solid fa-check"></i> Aceitar</button>` : `<span style="opacity:.6; font-size:11px;">Enviado</span>`}
+            </div>
+          </div>`;
+        } else {
+          html += `<div style="display:flex; justify-content:${mine ? "flex-end" : "flex-start"}; margin:6px 0;">
+            <div style="max-width:75%; padding:8px 12px; border-radius:14px; background:${mine ? "rgba(46,204,113,0.25)" : "rgba(0,0,0,0.4)"}; border:1px solid rgba(46,204,113,0.3); font-size:13px;">
+              ${m.text}
+            </div>
+          </div>`;
+        }
       });
       box.innerHTML = html || "<p style='font-size:12px; opacity:.7; text-align:center;'>Nenhuma mensagem ainda. Diga oi!</p>";
       box.scrollTop = box.scrollHeight;
@@ -502,6 +517,102 @@ function openChat(otherUid, otherNick) {
     });
 }
 // fim openChat
+
+function acceptSharedMessage(messageId) {
+  const m = chatMessagesCache[messageId];
+  if (!m || !m.shareType) return;
+  if (m.shareType === "checklist") acceptSharedChecklist(m.sharePayload);
+  else if (m.shareType === "agenda") acceptSharedAgenda(m.sharePayload);
+}
+// fim acceptSharedMessage
+
+function acceptSharedChecklist(payload) {
+  checklists.push({
+    id: "cl" + Date.now() + Math.floor(Math.random() * 1000),
+    name: payload.name,
+    items: (payload.items || []).map((it, i) => ({ id: "cli" + Date.now() + i + Math.floor(Math.random() * 1000), name: it.name, done: false }))
+  });
+  saveState();
+  showToast("Checklist adicionado no seu app!");
+}
+// fim acceptSharedChecklist
+
+function acceptSharedAgenda(payload) {
+  const item = {
+    id: "ag" + Date.now() + Math.floor(Math.random() * 1000),
+    name: payload.name,
+    type: payload.type,
+    xpEnabled: !!payload.xpEnabled,
+    value: payload.value || 0
+  };
+  if (item.type === "once") item.date = todayKey;
+  if (item.type === "weekly") item.weekdays = payload.weekdays || [];
+  if (item.type === "monthly") item.monthDay = payload.monthDay;
+  agendaItems.push(item);
+  saveState();
+  showToast("Item adicionado na sua agenda!");
+}
+// fim acceptSharedAgenda
+
+function shareChecklistViaChat(checklistId) {
+  const list = checklists.find(c => c.id === checklistId);
+  if (!list) return;
+  openModal({
+    title: "Nickname de quem vai receber esse checklist:",
+    type: "text",
+    confirmLabel: "Enviar",
+    onConfirm: (nick) => {
+      const target = (nick || "").trim();
+      if (!target) return;
+      db.collection("users").where("nicknameLower", "==", target.toLowerCase()).limit(1).get().then(snap => {
+        if (snap.empty) { showToast("Nickname não encontrado."); return; }
+        const toUid = snap.docs[0].id;
+        const chatId = getChatId(toUid);
+        const payload = { name: list.name, items: (list.items || []).map(i => ({ name: i.name })) };
+        const text = `Compartilhou um checklist: "${list.name}" (${payload.items.length} itens)`;
+        db.collection("chats").doc(chatId).collection("messages").add({
+          fromUid: currentUser.uid, text, shareType: "checklist", sharePayload: payload, createdAt: Date.now()
+        });
+        db.collection("chats").doc(chatId).set({
+          participants: [currentUser.uid, toUid], lastMessage: text, lastMessageAt: Date.now(),
+          lastMessageFrom: currentUser.uid, lastReadBy: { [currentUser.uid]: Date.now() }
+        }, { merge: true });
+        showToast(`Checklist enviado pra ${target}!`);
+      });
+    }
+  });
+}
+// fim shareChecklistViaChat
+
+function shareAgendaItemViaChat(itemId) {
+  const item = agendaItems.find(i => i.id === itemId);
+  if (!item) return;
+  openModal({
+    title: "Nickname de quem vai receber esse item da agenda:",
+    type: "text",
+    confirmLabel: "Enviar",
+    onConfirm: (nick) => {
+      const target = (nick || "").trim();
+      if (!target) return;
+      db.collection("users").where("nicknameLower", "==", target.toLowerCase()).limit(1).get().then(snap => {
+        if (snap.empty) { showToast("Nickname não encontrado."); return; }
+        const toUid = snap.docs[0].id;
+        const chatId = getChatId(toUid);
+        const payload = { name: item.name, type: item.type, xpEnabled: item.xpEnabled, value: item.value, weekdays: item.weekdays, monthDay: item.monthDay };
+        const text = `Compartilhou um item da agenda: "${item.name}"`;
+        db.collection("chats").doc(chatId).collection("messages").add({
+          fromUid: currentUser.uid, text, shareType: "agenda", sharePayload: payload, createdAt: Date.now()
+        });
+        db.collection("chats").doc(chatId).set({
+          participants: [currentUser.uid, toUid], lastMessage: text, lastMessageAt: Date.now(),
+          lastMessageFrom: currentUser.uid, lastReadBy: { [currentUser.uid]: Date.now() }
+        }, { merge: true });
+        showToast(`Item enviado pra ${target}!`);
+      });
+    }
+  });
+}
+// fim shareAgendaItemViaChat
 
 function sendChatMessage() {
   const input = document.getElementById("chatInput");
@@ -598,7 +709,7 @@ function startResetPatente() {
 // Essas funções redefinem as de mesmo nome do script.js — como carregam depois, "ganham" delas.
 function renderAdminScreen() {
   const content = document.getElementById("adminContent");
-    if (!isAdmin()) { content.innerHTML = "<p>Acesso restrito.</p>"; return; }
+  if (!isAdmin()) { content.innerHTML = "<p>Acesso restrito.</p>"; return; }
   content.innerHTML = `
     <button class="menu-btn menu-btn-adm" onclick="adminEditXP()"><i class="fa-solid fa-gear"></i> Editar meu XP</button>
     <button class="menu-btn menu-btn-adm" onclick="toggleAdminDayMode()"><i class="fa-solid fa-lock-open"></i> Editar dias (volte à Home depois)</button>
@@ -686,4 +797,4 @@ function checkBanStatus() {
     }
   });
 }
-// fim checkBanStatus
+// fim checkBanStatus  
