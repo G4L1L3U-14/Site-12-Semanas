@@ -298,7 +298,6 @@ function adminForceDuelExit() {
                 if (otherUid) updates.push(db.collection("users").doc(otherUid).update({ activeDuelId: null }));
               }
               Promise.all(updates).then(() => {
-  
                 showToast(`${target} foi tirado do duelo (o adversário também foi liberado).`);
               }).catch(e => showToast("Erro: " + e.message));
             });
@@ -599,8 +598,7 @@ function doGoogleLogin() {
   auth.signInWithPopup(provider).catch(e => showToast("Erro: " + e.message));
 }
 // fim doGoogleLogin
-  
-function isNicknameTaken(nickLower) {
+  function isNicknameTaken(nickLower) {
   return db.collection("users").where("nicknameLower", "==", nickLower).limit(1).get()
     .then(snap => !snap.empty);
 }
@@ -698,7 +696,6 @@ function refreshForUser() {
   currentUid = newUid;
   loadStateForCurrentUser();
   processStreak();
-  updateLevelUI();
   render();
   pullXPFromCloud();
   pullTasksFromCloud();
@@ -749,15 +746,13 @@ function syncTasksToFirestore() {
 function pullXPFromCloud() {
   if (!currentUser) return;
   db.collection("users").doc(currentUser.uid).get().then(docSnap => {
-    if (docSnap.exists) {
-      const cloudXP = docSnap.data().xp || 0;
-      if (cloudXP > xp) {
-        xp = cloudXP;
-        saveState();
-        updateLevelUI();
-        render();
-      }
+    const cloudXP = docSnap.exists ? (docSnap.data().xp || 0) : 0;
+    if (cloudXP > xp) {
+      xp = cloudXP;
+      saveLocalOnly();
     }
+    updateLevelUI();
+    render();
   });
 }
 // fim pullXPFromCloud
@@ -898,10 +893,11 @@ function saveProfile(uid) {
   const nick = document.getElementById("profileNickInput").value.trim();
 
   if (!nick) { showToast("Nickname não pode ficar vazio."); return; }
+
   const proceed = () => {
     db.collection("users").doc(uid).set({
       avatar: avatar || "🙂", bio, nickname: nick, nicknameLower: nick.toLowerCase()
-    }, { merge: true }).then(() => {
+      }, { merge: true }).then(() => {
       currentNickname = nick;
       renderAuth();
       profileEditMode = false;
@@ -924,5 +920,3 @@ function saveProfile(uid) {
 </script>
 </body>
 </html>
-
-  
