@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weekly Tracker</title>
+<link rel="stylesheet" href="style.css?v=20260905">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+
+<button id="menuToggle" class="menu-toggle-btn" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+<button id="notifToggle" class="notif-toggle-btn" onclick="showScreen('notifications')"><i class="fa-solid fa-bell"></i><span id="notifBadge" class="notif-badge hidden">0</span></button>
+
+<div id="sidebarBackdrop" class="hidden" onclick="closeSidebar()"></div>
+<div id="sidebar" class="sidebar">
+  <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+  <div id="sidebarMenu"></div>
+</div>
+
+<!-- ===== TELA: HOME ===== -->
+<div id="screenHome" class="screen">
+  <div class="container">
+    <h2><i class="fa-solid fa-trophy"></i> Weekly Tracker</h2>
+    <div class="date" id="date"></div>
+    <div class="weekrange" id="weekrange"></div>
+    <div class="quote" id="quote"></div>
+    <div id="homeLoginBanner"></div>
+
+    <div class="player-card">
+      <div id="rank" class="rank-display">—</div>
+      <div class="xp-wrapper">
+        <span id="levelText">Lv 1</span>
+        <div class="xp-bar">
+          <div class="xp-fill" id="xpBar"></div>
+          <div class="xp-dot" id="xpDot">0%</div>
+        </div>
+        <span id="xpCurrent">0 XP</span>
+      </div>
+      <div id="streakDisplay" class="streak-display"></div>
+    </div>
+
+    <div id="admBanner"></div>
+
+    <div class="task-manager">
+      <div id="taskManagerTabs" style="display:flex; gap:8px; margin-bottom:10px;"></div>
+      <div id="taskManagerBody"></div>
+      <div id="taskListBody"></div>
+      <div id="pendingNote" class="pending-note"></div>
+    </div>
+
+    <div class="task-manager" id="todaySubtasksBox"></div>
+
+    <table id="tracker"></table>
+  </div>
+</div>
+
+<!-- ===== TELA: DESEMPENHO/SCORE ===== -->
+<div id="screenStats" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
+    <h2><i class="fa-solid fa-chart-column"></i> Desempenho da Semana</h2>
+    <div class="bar-container" id="bars"></div>
+    <div class="week-score" id="weekScore"></div>
+    <div class="controls">
+      <button class="aura-btn" onclick="copyReport()"><i class="fa-solid fa-clipboard"></i> Copiar relatório</button>
+    </div>
+
+    <div class="task-manager" style="margin-top:20px;">
+      <h3><i class="fa-solid fa-clock-rotate-left"></i> Semanas Anteriores</h3>
+      <div id="pastWeekTabs" style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;"></div>
+      <div id="pastWeekContent"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TELA: PERFIL ===== -->
+<div id="screenProfile" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
+    <div id="profileContent"></div>
+  </div>
+</div>
+
+<!-- ===== TELA: RANKING ===== -->
+<div id="screenRanking" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
+    <h2><i class="fa-solid fa-trophy"></i> Ranking</h2>
+    <div id="rankingContent"></div>
+  </div>
+</div>
+
+<!-- ===== TELA: SALÃO DOS MARECHAIS ===== -->
+<div id="screenHallOfFame" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
+    <h2><i class="fa-solid fa-landmark"></i> Salão dos Marechais</h2>
+    <div id="hallContent"></div>
+  </div>
+</div>
+
+<!-- ===== TELA: DUELO ===== -->
+<div id="screenDuel" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
+    <h2><i class="fa-solid fa-hand-fist"></i> Duelo Semanal</h2>
+    <div id="duelContent"></div>
+  </div>
+</div>
+
+<!-- ===== TELA: AMIGOS ===== -->
+<div id="screenFriends" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
+    <h2><i class="fa-solid fa-user-group"></i> Amigos</h2>
+    <div id="friendsContent"></div>
+  </div>
+</div>
+
+<!-- ===== TELA: ADM ===== -->
+<div id="screenAdmin" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
+    <h2><i class="fa-solid fa-gear"></i> Painel ADM</h2>
+    <div id="adminContent"></div>
+  </div>
+</div>
+
+<div id="screenHelp" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
+    <h2><i class="fa-solid fa-circle-question"></i> Como funciona</h2>
+
+    <h3>🎯 Tarefas</h3>
+    <p>Adicione suas tarefas no "Gerenciar tarefas". Só dá pra marcar/desmarcar o dia de <strong>hoje</strong> — dias passados ficam travados. Cada tarefa ativa divide igualmente um total de <strong>1.000 XP por dia</strong>: quanto menos tarefas, mais cada uma vale.</p>
+
+    <h3>🎖️ Patentes</h3>
+    <p>Você sobe de patente conforme acumula XP. Fazer <strong>100% de tudo, todos os dias do ano</strong>, leva até Marechal, a patente máxima.</p>
+
+    <h3>🔥 Streak e bônus</h3>
+    <p>Bater 50%, 80% ou 100% no dia já dá um bônus extra de XP. Sequências de <strong>7 e 30 dias seguidos em 100%</strong> dão um bônus ainda maior.</p>
+
+    <h3><i class="fa-solid fa-trophy"></i> Ranking e <i class="fa-solid fa-landmark"></i> Salão dos Marechais</h3>
+    <p>O Ranking mostra todo mundo ordenado por XP atual. O Salão dos Marechais é diferente: só entra quem já <strong>resetou a patente estando em Marechal</strong>, ganhando a medalha permanente.</p>
+
+    <h3><i class="fa-solid fa-hand-fist"></i> Duelo</h3>
+    <p>Desafie alguém pra ver quem faz a maior % de tarefas na semana. O resultado sai quando a semana virar.</p>
+
+    <h3><i class="fa-solid fa-user-group"></i> Amigos</h3>
+    <p>Pesquise pelo nickname, mande pedido de amizade, e depois desafie seus amigos pra duelo direto da lista.</p>
+
+    <h3><i class="fa-solid fa-arrows-rotate"></i> Resetar Patente</h3>
+    <p>Zera seu XP de volta pro início, mas te dá uma medalha permanente da patente que você tinha — ela fica salva no seu perfil pra sempre.</p>
+
+    <h3><i class="fa-solid fa-bug"></i> Relatar Bug</h3>
+    <p>Encontrou algo estranho ou tem uma sugestão? Manda pela gente por aqui, direto do menu.</p>
+  </div>
+</div>
+
+<div id="screenNotifications" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
+    <h2><i class="fa-solid fa-bell"></i> Notificações</h2>
+    <div id="notificationsContent"></div>
+  </div>
+</div>
+
+<div id="screenSettings" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('profile')">← Voltar</button>
+    <h2><i class="fa-solid fa-gear"></i> Configurações</h2>
+    <button class="menu-btn" onclick="startResetPatente()"><i class="fa-solid fa-arrows-rotate"></i> Resetar Patente</button>
+    <button class="menu-btn" onclick="showMyUID()"><i class="fa-solid fa-key"></i> Meu UID</button>
+    <button class="menu-btn" onclick="switchAccount()"><i class="fa-solid fa-right-left"></i> Trocar de Conta</button>
+    <button class="menu-btn" onclick="reportBug()"><i class="fa-solid fa-bug"></i> Relatar Bug</button>
+    <button class="menu-btn" onclick="showScreen('help')"><i class="fa-solid fa-circle-question"></i> Ajuda / Tutorial</button>
+    <button class="menu-btn menu-btn-danger" onclick="doLogout()"><i class="fa-solid fa-right-from-bracket"></i> Sair</button>
+  </div>
+</div>
+
+<div id="screenChecklist" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
+    <h2><i class="fa-solid fa-list-check"></i> Checklist</h2>
+    <div class="task-manager">
+      <div id="checklistManagerBody"></div>
+      <div id="checklistListBody"></div>
+    </div>
+  </div>
+</div>
+
+<div id="screenChat" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('friends')">← Voltar</button>
+    <h2><i class="fa-solid fa-comment"></i> <span id="chatWithName"></span></h2>
+    <div id="chatMessagesBox" style="min-height:50vh; max-height:60vh; overflow-y:auto; background:rgba(0,0,0,0.3); border-radius:16px; padding:12px; border:1px solid rgba(46,204,113,0.2);"></div>
+    <div style="display:flex; gap:8px; margin-top:12px;">
+      <input type="text" id="chatInput" placeholder="Escreva uma mensagem..." style="flex:1; box-sizing:border-box; padding:10px; border-radius:10px; border:1px solid rgba(46,204,113,0.4); background:rgba(0,0,0,0.5); color:#eaffea;" onkeydown="if(event.key==='Enter') sendChatMessage();">
+      <button class="aura-btn" onclick="sendChatMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+    </div>
+  </div>
+</div>
+
+<div id="screenAgenda" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
+    <h2><i class="fa-solid fa-calendar-days"></i> Agenda</h2>
+
+    <div class="task-manager">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <button class="menu-btn-small" onclick="changeAgendaMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+        <strong id="agendaMonthLabel" style="text-transform:capitalize;"></strong>
+        <button class="menu-btn-small" onclick="changeAgendaMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+      </div>
+      <div id="agendaCalendarGrid" class="agenda-grid"></div>
+    </div>
+
+    <div class="task-manager" id="agendaDayItems"></div>
+
+    <div class="task-manager">
+      <h3 style="margin-top:0;"><i class="fa-solid fa-plus"></i> Novo item</h3>
+      <div id="agendaFormBody"></div>
+    </div>
+  </div>
+</div>
+
+<div id="bannedOverlay" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.97); z-index:1300; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:30px; box-sizing:border-box;">
+  <i class="fa-solid fa-ban" style="font-size:3rem; color:#e74c3c; margin-bottom:16px;"></i>
+  <h2 style="color:#ff8577;">Você foi impossibilitado de mexer no site</h2>
+  <p style="font-size:14px; opacity:.85; margin-top:10px;">Motivo: <span id="bannedReasonText"></span></p>
+</div>
+
+<div id="promotionOverlay" class="hidden">
+  <div class="promo-content">
+    <div class="promo-badge">🎖️</div>
+    <div class="promo-label">Nova Patente Alcançada</div>
+    <div id="promotionRank"></div>
+  </div>
+</div>
+
+<div id="friendsListOverlay" class="hidden"></div>
+<div id="modalOverlay" class="hidden"></div>
+<div id="toast" class="hidden"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="script.js"></script>
+<script>
+</script>
+<script src="script2.js"></script>
+<script>
+
+function showBannedOverlay(reason) {
+  const box = document.getElementById("bannedReasonText");
+  if (box) box.innerText = reason;
+  const overlay = document.getElementById("bannedOverlay");
+  if (overlay) overlay.classList.remove("hidden");
+}
+// fim showBannedOverlay
+
+function hideBannedOverlay() {
+  const overlay = document.getElementById("bannedOverlay");
+  if (overlay) overlay.classList.add("hidden");
+}
+// fim hideBannedOverlay
+
+function adminForceDuelExit() {
+  if (!isAdmin()) { showToast("Só o ADM pode usar isso."); return; }
+  openModal({
+    title: "Senha de ADM:",
+    type: "password",
+    confirmLabel: "Continuar",
+    onConfirm: (pass) => {
+      if (pass !== ADM_PASSWORD) { showToast("❌ Senha incorreta."); return; }
+      openModal({
+        title: "Nickname do jogador pra tirar do duelo:",
+        type: "text",
+        confirmLabel: "Tirar",
+        onConfirm: (nick) => {
+          const target = (nick || "").trim();
+          if (!target) return;
+          db.collection("users").where("nicknameLower", "==", target.toLowerCase()).limit(1).get().then(snap => {
+            if (snap.empty) { showToast("Nickname não encontrado."); return; }
+            const targetDoc = snap.docs[0];
+            const activeDuelId = targetDoc.data().activeDuelId;
+            if (!activeDuelId) { showToast(`${target} não está em nenhum duelo.`); return; }
+
+            db.collection("duels").doc(activeDuelId).get().then(duelSnap => {
+              const duel = duelSnap.exists ? duelSnap.data() : null;
+              const updates = [
+                db.collection("users").doc(targetDoc.id).update({ activeDuelId: null })
+              ];
+              if (duel) {
+                updates.push(db.collection("duels").doc(activeDuelId).update({ status: "declined" }));
+                const otherUid = duel.challengerUid === targetDoc.id ? duel.opponentUid : duel.challengerUid;
+                if (otherUid) updates.push(db.collection("users").doc(otherUid).update({ activeDuelId: null }));
+              }
+              Promise.all(updates).then(() => {
+  
+                showToast(`${target} foi tirado do duelo (o adversário também foi liberado).`);
+              }).catch(e => showToast("Erro: " + e.message));
+            });
+          }).catch(e => showToast("Erro: " + e.message));
+        }
+      });
+    }
+  });
+}
+// fim adminForceDuelExit
+
+function openAdminBroadcastForm() {
+  const box = document.getElementById("broadcastBox");
+  box.innerHTML = `
+    <div class="admin-form" style="margin-top:16px; text-align:left;">
+      <label style="font-size:11px; opacity:.8;">Título</label>
+      <input type="text" id="broadcastTitle" placeholder="Ex: Atualização do site">
+      <label style="font-size:11px; opacity:.8;">Mensagem</label>
+      <textarea id="broadcastMessage" rows="3" placeholder="Escreva aqui..."></textarea>
+      <label style="font-size:11px; opacity:.8;">Cor</label>
+      <select id="broadcastColor" style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(46,204,113,0.4); background:rgba(0,0,0,0.5); color:#eaffea; margin-top:4px; margin-bottom:8px;">
+        <option value="#2ecc71">Verde (padrão)</option>
+        <option value="#3498db">Azul</option>
+        <option value="#ffb347">Laranja</option>
+        <option value="#e74c3c">Vermelho</option>
+        <option value="#b06fe0">Roxo</option>
+      </select>
+      <label style="font-size:11px; opacity:.8;">Destinatário (deixe vazio pra mandar pra todo mundo)</label>
+      <input type="text" id="broadcastTarget" placeholder="Nickname (opcional)">
+      <button class="menu-btn menu-btn-adm" onclick="sendAdminBroadcast()">Enviar</button>
+    </div>
+  `;
+}
+
+function sendAdminBroadcast() {
+  const title = document.getElementById("broadcastTitle").value.trim();
+  const message = document.getElementById("broadcastMessage").value.trim();
+  const color = document.getElementById("broadcastColor").value;
+  const target = document.getElementById("broadcastTarget").value.trim();
+
+  if (!title || !message) { showToast("Preenche título e mensagem."); return; }
+
+  if (target) {
+    db.collection("users").where("nicknameLower", "==", target.toLowerCase()).limit(1).get().then(snap => {
+      if (snap.empty) { showToast("Nickname não encontrado."); return; }
+      createNotification(snap.docs[0].id, "admin_broadcast", title, message, { color });
+      showToast(`Notificação enviada pra ${target}.`);
+    });
+  } else {
+    db.collection("users").get().then(snap => {
+      snap.forEach(d => {
+        createNotification(d.id, "admin_broadcast", title, message, { color });
+      });
+      showToast(`Notificação enviada pra ${snap.size} usuário(s).`);
+    });
+  }
+}
+
+function loadNotificationsScreen() {
+  const content = document.getElementById("notificationsContent");
+  if (!currentUser) { content.innerHTML = "<p>Faça login pra ver notificações.</p>"; return; }
+  content.innerHTML = "<p>Carregando...</p>";
+
+  db.collection("notifications").where("toUid", "==", currentUser.uid).orderBy("createdAt", "desc").limit(50).get().then(snap => {
+    let rows = "";
+    const batch = db.batch();
+    let hasUnread = false;
+
+    snap.forEach(d => {
+      const data = d.data();
+      const date = new Date(data.createdAt).toLocaleString("pt-BR");
+      const color = (data.meta && data.meta.color) ? data.meta.color : "#2ecc71";
+      rows += `
+        <div class="friend-row" style="flex-direction:column; align-items:flex-start; border-left:4px solid ${color}; padding-left:10px; ${data.read ? "opacity:.6;" : ""}">
+          <strong>${data.title}</strong>
+          <span style="font-size:11px; opacity:.7;">${date}</span>
+          <p style="margin:6px 0 0 0; font-size:13px;">${data.message}</p>
+        </div>`;
+      if (!data.read) {
+        hasUnread = true;
+        batch.update(d.ref, { read: true });
+      }
+    });
+
+    content.innerHTML = rows || "<p style='font-size:12px;opacity:.7;'>Nenhuma notificação ainda.</p>";
+
+    if (hasUnread) {
+      batch.commit().then(() => refreshNotifBadge());
+    }
+  }).catch(e => {
+    content.innerHTML = `<p>Erro: ${e.message}</p>`;
+  });
+}
+// fim broadcast de ADM
+
+function switchAccount() {
+  auth.signOut().then(() => {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    auth.signInWithPopup(provider).catch(e => showToast("Erro: " + e.message));
+  });
+}
+// fim switchAccount
+
+// ===== AGENDA (calendário próprio, com XP) =====
+let agendaViewMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+let agendaSelectedDateKey = todayKey;
+
+function agendaItemAppliesOnDate(item, date) {
+  const dateKey = toDateKey(date);
+  if (item.type === "once") return item.date === dateKey;
+  if (item.type === "weekly") return (item.weekdays || []).includes(date.getDay());
+  if (item.type === "monthly") return date.getDate() === item.monthDay;
+  return false;
+}
+// fim agendaItemAppliesOnDate
+
+function getAgendaItemsForDate(date) {
+  return agendaItems.filter(item => agendaItemAppliesOnDate(item, date));
+}
+// fim getAgendaItemsForDate
+
+function toggleAgendaItem(itemId, dateKey) {
+  if (dateKey !== todayKey) return;
+  const item = agendaItems.find(i => i.id === itemId);
+  if (!item) return;
+  if (!history[dateKey]) history[dateKey] = {};
+  if (!history[dateKey].agenda) history[dateKey].agenda = {};
+  const wasDone = !!history[dateKey].agenda[itemId];
+  history[dateKey].agenda[itemId] = !wasDone;
+  xp = Math.max(0, xp + (wasDone ? -item.value : item.value));
+  saveState();
+  updateLevelUI();
+  renderAgendaDayItems();
+}
+// fim toggleAgendaItem
+
+function deleteAgendaItem(id) {
+  agendaItems = agendaItems.filter(i => i.id !== id);
+  saveState();
+  renderAgendaCalendar();
+  renderAgendaDayItems();
+}
+// fim deleteAgendaItem
+
+function selectAgendaDate(dateKey) {
+  agendaSelectedDateKey = dateKey;
+  renderAgendaCalendar();
+  renderAgendaDayItems();
+  updateAgendaTypeFields();
+}
+// fim selectAgendaDate
+
+function changeAgendaMonth(delta) {
+  agendaViewMonth = new Date(agendaViewMonth.getFullYear(), agendaViewMonth.getMonth() + delta, 1);
+  renderAgendaCalendar();
+}
+// fim changeAgendaMonth
+
+function renderAgendaCalendar() {
+  const grid = document.getElementById("agendaCalendarGrid");
+  if (!grid) return;
+  const year = agendaViewMonth.getFullYear();
+  const month = agendaViewMonth.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startOffset = firstDay.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const label = document.getElementById("agendaMonthLabel");
+  if (label) label.innerText = firstDay.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+
+  let html = "";
+  ["D","S","T","Q","Q","S","S"].forEach(l => html += `<div class="agenda-daylabel">${l}</div>`);
+  for (let i = 0; i < startOffset; i++) html += `<div class="agenda-cell empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    const dateKey = toDateKey(date);
+    const items = getAgendaItemsForDate(date);
+    const isToday = dateKey === todayKey;
+    const isSelected = dateKey === agendaSelectedDateKey;
+    html += `<div class="agenda-cell ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}" onclick="selectAgendaDate('${dateKey}')">
+      ${d}${items.length > 0 ? '<span class="agenda-dot"></span>' : ""}
+    </div>`;
+  }
+  grid.innerHTML = html;
+}
+// fim renderAgendaCalendar
+
+function renderAgendaDayItems() {
+  const box = document.getElementById("agendaDayItems");
+  if (!box) return;
+  const date = new Date(agendaSelectedDateKey + "T00:00:00");
+  const items = getAgendaItemsForDate(date);
+  const doneState = (history[agendaSelectedDateKey] && history[agendaSelectedDateKey].agenda) || {};
+  const canEdit = agendaSelectedDateKey === todayKey;
+
+  let html = `<h3 style="margin-top:0;">${date.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" })}</h3>`;
+  if (items.length === 0) {
+    html += `<p style="font-size:12px; opacity:.7;">Nada agendado pra esse dia.</p>`;
+  } else {
+    items.forEach(item => {
+      const done = !!doneState[item.id];
+      html += `
+        <div class="friend-row" style="${canEdit ? "cursor:pointer;" : "opacity:.6;"}" onclick="${canEdit ? `toggleAgendaItem('${item.id}','${agendaSelectedDateKey}')` : ""}">
+          <span>${done ? '<i class="fa-solid fa-square-check"></i>' : '<i class="fa-regular fa-square"></i>'} ${item.name} <span style="opacity:.6; font-size:11px;">(+${item.value} XP)</span></span>
+          <button class="menu-btn-small menu-btn-danger" onclick="event.stopPropagation(); deleteAgendaItem('${item.id}')"><i class="fa-solid fa-trash"></i></button>
+        </div>`;
+    });
+  }
+  box.innerHTML = html;
+}
+// fim renderAgendaDayItems
+
+function updateAgendaTypeFields() {
+  const typeEl = document.getElementById("agendaItemType");
+  if (!typeEl) return;
+  const type = typeEl.value;
+  const box = document.getElementById("agendaTypeFieldsBox");
+  if (type === "weekly") {
+    box.innerHTML = dayLabels.map((lbl, i) => `<button type="button" class="day-toggle" data-day="${i}" onclick="this.classList.toggle('active')">${lbl}</button>`).join("");
+  } else if (type === "monthly") {
+    box.innerHTML = `<input type="number" id="agendaMonthDayInput" min="1" max="31" placeholder="Dia do mês (1-31)">`;
+  } else {
+    box.innerHTML = `<p style="font-size:11px; opacity:.7;">Vale só pro dia selecionado no calendário (${agendaSelectedDateKey}).</p>`;
+  }
+}
+// fim updateAgendaTypeFields
+
+function addAgendaItem() {
+  const name = document.getElementById("agendaItemName").value.trim();
+  const type = document.getElementById("agendaItemType").value;
+  const xpVal = parseInt(document.getElementById("agendaItemXP").value) || 0;
+  if (!name) { showToast("Digite um nome."); return; }
+
+  const item = { id: "ag" + Date.now() + Math.floor(Math.random() * 1000), name, type, value: xpVal };
+
+  if (type === "once") {
+    item.date = agendaSelectedDateKey;
+  } else if (type === "weekly") {
+    const buttons = document.querySelectorAll("#agendaTypeFieldsBox .day-toggle.active");
+    item.weekdays = Array.from(buttons).map(b => parseInt(b.dataset.day));
+    if (item.weekdays.length === 0) { showToast("Escolha pelo menos 1 dia da semana."); return; }
+  } else if (type === "monthly") {
+    const day = parseInt(document.getElementById("agendaMonthDayInput").value);
+    if (!day || day < 1 || day > 31) { showToast("Digite um dia do mês válido."); return; }
+    item.monthDay = day;
+  }
+
+  agendaItems.push(item);
+  saveState();
+  document.getElementById("agendaItemName").value = "";
+  renderAgendaCalendar();
+  renderAgendaDayItems();
+}
+// fim addAgendaItem
+
+function loadAgendaScreen() {
+  agendaViewMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  agendaSelectedDateKey = todayKey;
+
+  document.getElementById("agendaFormBody").innerHTML = `
+    <div class="admin-form">
+      <label>Nome</label>
+      <input type="text" id="agendaItemName" placeholder="Ex: Pagar conta de luz">
+      <label>Tipo</label>
+      <select id="agendaItemType" onchange="updateAgendaTypeFields()">
+        <option value="once">Só no dia selecionado</option>
+        <option value="weekly">Repete em dias da semana</option>
+        <option value="monthly">Repete todo dia X do mês</option>
+      </select>
+      <div id="agendaTypeFieldsBox"></div>
+      <label>XP ao concluir</label>
+      <input type="number" id="agendaItemXP" value="20" min="0">
+      <button class="aura-btn" onclick="addAgendaItem()"><i class="fa-solid fa-plus"></i> Criar</button>
+    </div>
+  `;
+  updateAgendaTypeFields();
+  renderAgendaCalendar();
+  renderAgendaDayItems();
+}
+// fim loadAgendaScreen
+
+// ===== INIT =====
+loadStateForCurrentUser();
+renderQuote();
+processStreak();
+updateLevelUI();
+renderAuth();
+render();
+
+// ===== FIM DO ARQUIVO — VERSÃO 2026-09-02-01 =====
+
+
+
+
+function doGoogleLogin() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch(e => showToast("Erro: " + e.message));
+}
+// fim doGoogleLogin
+  
+function isNicknameTaken(nickLower) {
+  return db.collection("users").where("nicknameLower", "==", nickLower).limit(1).get()
+    .then(snap => !snap.empty);
+}
+// fim isNicknameTaken
+
+function doEmailSignup() {
+  const email = document.getElementById("authEmail").value.trim();
+  const pass = document.getElementById("authPass").value;
+  const nick = document.getElementById("authNick").value.trim();
+  if (!email || !pass || !nick) { showToast("Preenche email, senha e nickname."); return; }
+
+  isNicknameTaken(nick.toLowerCase()).then(taken => {
+    if (taken) { showToast("Esse nickname já está em uso, escolha outro."); return; }
+    auth.createUserWithEmailAndPassword(email, pass).then(cred => {
+      return db.collection("users").doc(cred.user.uid).set({
+        nickname: nick, nicknameLower: nick.toLowerCase(), xp: 0,
+        avatar: "🙂", bio: "", medals: [], friends: [], activeDuelId: null,
+        duelWins: 0, updatedAt: Date.now()
+      }, { merge: true });
+    }).catch(e => showToast("Erro: " + e.message));
+  });
+}
+// fim doEmailSignup
+
+function doEmailLogin() {
+  const email = document.getElementById("authEmail").value.trim();
+  const pass = document.getElementById("authPass").value;
+  if (!email || !pass) { showToast("Preenche email e senha."); return; }
+  auth.signInWithEmailAndPassword(email, pass).catch(e => showToast("Erro: " + e.message));
+}
+// fim doEmailLogin
+
+function doLogout() {
+  auth.signOut();
+  showScreen("home");
+}
+// fim doLogout
+
+function promptNicknameForUid(uid) {
+  openModal({
+    title: "Escolha um nickname único (vai aparecer no ranking):",
+    type: "text",
+    confirmLabel: "Salvar",
+    onConfirm: (nick) => {
+      const clean = (nick || "").trim();
+      if (!clean) { promptNicknameForUid(uid); return; }
+      isNicknameTaken(clean.toLowerCase()).then(taken => {
+        if (taken) {
+          showToast("Nickname já em uso, escolha outro.");
+          promptNicknameForUid(uid);
+          return;
+        }
+        currentNickname = clean;
+        db.collection("users").doc(uid).set({
+          nickname: clean, nicknameLower: clean.toLowerCase(), xp: xp,
+          avatar: "🙂", bio: "", medals: [], friends: [], activeDuelId: null,
+          duelWins: 0, updatedAt: Date.now()
+        }, { merge: true });
+        renderAuth();
+      });
+    }
+  });
+}
+// fim promptNicknameForUid
+
+auth.onAuthStateChanged(user => {
+  currentUser = user;
+  if (user) {
+    db.collection("users").doc(user.uid).get().then(docSnap => {
+      showToast("✅ Logado com sucesso.");
+      if (docSnap.exists && docSnap.data().nickname) {
+        currentNickname = docSnap.data().nickname;
+        renderAuth();
+        refreshForUser();
+      } else {
+        promptNicknameForUid(user.uid);
+        refreshForUser();
+      }
+    }).catch(e => {
+      showToast("❌ Erro ao carregar perfil: " + e.message);
+      console.error(e);
+      renderAuth();
+    });
+  } else {
+    currentNickname = null;
+    renderAuth();
+    refreshForUser();
+  }
+});
+// fim onAuthStateChanged
+
+function refreshForUser() {
+  const newUid = currentUser ? currentUser.uid : "guest";
+  if (newUid === currentUid) return;
+  currentUid = newUid;
+  loadStateForCurrentUser();
+  processStreak();
+  updateLevelUI();
+  render();
+  pullXPFromCloud();
+  pullTasksFromCloud();
+  checkDuelWeekRollover();
+  refreshNotifBadge();
+  checkBanStatus();
+}
+// fim refreshForUser
+
+function pullTasksFromCloud() {
+  if (!currentUser) return;
+  db.collection("users").doc(currentUser.uid).get().then(docSnap => {
+    if (docSnap.exists && docSnap.data().sync) {
+      const cloud = docSnap.data().sync;
+      const migrated = migrateSubtaskData(cloud.subtaskBlocks || [], cloud.tasks || []);
+      subtaskBlocks = migrated.blocks;
+      tasks = migrated.tasks.map(t => ({ ...t, days: (t.days && t.days.length) ? t.days : [0,1,2,3,4,5,6] }));
+      const migratedPending = migrateSubtaskData(subtaskBlocks, cloud.pendingTasks || []);
+      pendingTasks = migratedPending.tasks.map(t => ({ ...t, days: (t.days && t.days.length) ? t.days : [0,1,2,3,4,5,6] }));
+      history = cloud.history || {};
+      checklists = cloud.checklists || [];
+      agendaItems = cloud.agendaItems || [];
+      weekStart = cloud.weekStart || currentSundayKey;
+
+      if (weekStart !== currentSundayKey) {
+        if (pendingTasks.length > 0) {
+          tasks = tasks.concat(pendingTasks);
+          pendingTasks = [];
+        }
+        weekStart = currentSundayKey;
+      }
+
+      saveState();
+      render();
+    }
+  });
+}
+// fim pullTasksFromCloud
+
+function syncTasksToFirestore() {
+  if (!currentUser) return;
+  db.collection("users").doc(currentUser.uid).set({
+    sync: { tasks, pendingTasks, history, weekStart, subtaskBlocks, checklists, agendaItems }
+  }, { merge: true }).catch(() => {});
+}
+// fim syncTasksToFirestore
+
+function pullXPFromCloud() {
+  if (!currentUser) return;
+  db.collection("users").doc(currentUser.uid).get().then(docSnap => {
+    if (docSnap.exists) {
+      const cloudXP = docSnap.data().xp || 0;
+      if (cloudXP > xp) {
+        xp = cloudXP;
+        saveState();
+        updateLevelUI();
+        render();
+      }
+    }
+  });
+}
+// fim pullXPFromCloud
+
+function syncXPToFirestore() {
+  if (!currentUser) return;
+  db.collection("users").doc(currentUser.uid).set({ xp: xp, updatedAt: Date.now() }, { merge: true }).catch(() => {});
+}
+// fim syncXPToFirestore
+
+// ===== RANKING (tela) =====
+function loadRankingScreen() {
+  const content = document.getElementById("rankingContent");
+  content.innerHTML = "<p>Carregando...</p>";
+  db.collection("users").orderBy("xp", "desc").limit(20).get().then(snap => {
+    let rows = "";
+    let pos = 1;
+    snap.forEach(d => {
+      const data = d.data();
+      const lvl = getLevelFromXP(data.xp || 0);
+      const rank = getRankFromLevel(lvl);
+      rows += `<div class="ranking-row" onclick="viewProfile('${d.id}')"><span>#${pos}</span><span>${data.nickname || "Jogador"}</span><span class="${slugRank(rank)}">${rank}</span><span>${data.xp || 0} XP</span></div>`;
+      pos++;
+    });
+    content.innerHTML = rows || "<p>Ninguém no ranking ainda.</p>";
+  }).catch(e => { content.innerHTML = `<p>Erro: ${e.message}</p>`; });
+}
+// fim loadRankingScreen
+
+// ===== SALÃO DOS MARECHAIS (tela) =====
+function loadHallOfFameScreen() {
+  const content = document.getElementById("hallContent");
+  content.innerHTML = "<p>Carregando...</p>";
+  db.collection("users").where("hasMarechalMedal", "==", true).get().then(snap => {
+    let rows = "";
+    snap.forEach(d => {
+      const data = d.data();
+      const count = (data.medals || []).filter(m => m.rank === "Marechal").length;
+      rows += `<div class="ranking-row" onclick="viewProfile('${d.id}')"><span>🎖️</span><span>${data.nickname || "Jogador"}</span><span>Marechal</span><span>${count}x</span></div>`;
+    });
+    content.innerHTML = rows || "<p>Ninguém chegou a Marechal ainda. Seja o primeiro!</p>";
+  }).catch(e => { content.innerHTML = `<p>Erro: ${e.message}</p>`; });
+}
+// fim loadHallOfFameScreen
+
+// ===== PERFIL (tela, estilo Instagram/Duolingo) =====
+function loadProfileScreen() {
+  const targetUid = viewedProfileUid || (currentUser ? currentUser.uid : null);
+  if (!targetUid) {
+    document.getElementById("profileContent").innerHTML = "<p>Faça login pra ver perfis.</p>";
+    return;
+  }
+  const isMine = currentUser && targetUid === currentUser.uid;
+  document.getElementById("profileContent").innerHTML = "<p>Carregando...</p>";
+
+  db.collection("users").doc(targetUid).get().then(docSnap => {
+    const data = docSnap.exists ? docSnap.data() : {};
+    if (!isMine && currentUser) {
+      db.collection("users").doc(currentUser.uid).get().then(myDoc => {
+        const myFriends = (myDoc.data() || {}).friends || [];
+        const theirFriends = data.friends || [];
+        const mutual = myFriends.filter(uid => theirFriends.includes(uid));
+        const alreadyFriends = myFriends.includes(targetUid);
+        renderProfileScreen(targetUid, data, isMine, mutual.length, alreadyFriends);
+      });
+    } else {
+      renderProfileScreen(targetUid, data, isMine, 0, false);
+    }
+  }).catch(e => {
+    document.getElementById("profileContent").innerHTML = `<p>Erro: ${e.message}</p>`;
+  });
+}
+// fim loadProfileScreen
+
+function viewProfile(uid) {
+  viewedProfileUid = uid;
+  profileEditMode = false;
+  showScreen("profile");
+}
+// fim viewProfile
+
+function renderProfileScreen(uid, data, editable, mutualCount, alreadyFriends) {
+  const content = document.getElementById("profileContent");
+  const avatar = data.avatar || "🙂";
+  const avatarHtml = avatar.indexOf("http") === 0
+    ? `<img src="${avatar}" class="profile-avatar-img-big">`
+    : `<div class="profile-avatar-emoji-big">${avatar}</div>`;
+
+  const medals = (data.medals || []).length
+    ? data.medals.map(m => `<span class="medal-chip ${slugRank(m.rank)}">🎖️ ${m.rank}</span>`).join("")
+    : `<span style="opacity:.6; font-size:12px;">Nenhuma medalha ainda</span>`;
+
+  if (editable && profileEditMode) {
+    content.innerHTML = `
+      <div class="profile-header">
+        <button class="edit-toggle-btn" onclick="cancelProfileEdit()">Cancelar</button>
+      </div>
+      ${avatarHtml}
+      <div class="profile-edit-fields">
+        <label>Nickname</label>
+        <input type="text" id="profileNickInput" value="${(data.nickname || "").replace(/"/g,"&quot;")}">
+        <label>Avatar (emoji ou URL de imagem)</label>
+        <input type="text" id="profileAvatarInput" value="${(data.avatar || "").replace(/"/g,"&quot;")}">
+        <label>Bio</label>
+        <textarea id="profileBioInput" rows="3">${data.bio || ""}</textarea>
+      </div>
+      <button class="menu-btn" onclick="saveProfile('${uid}')">Salvar</button>
+    `;
+  } else {
+    content.innerHTML = `
+      <div class="profile-header">
+        ${editable ? `<button class="edit-toggle-btn" onclick="showScreen('settings')"><i class="fa-solid fa-gear"></i> Configurações</button>` : ""}
+        ${editable ? `<button class="edit-toggle-btn" onclick="startProfileEdit()"><i class="fa-solid fa-pen"></i> Editar</button>` : ""}
+        ${(!editable && currentUser && !alreadyFriends) ? `<button class="edit-toggle-btn" id="addFriendProfileBtn" onclick="sendFriendRequest('${uid}','${(data.nickname||"").replace(/'/g,"")}', this)"><i class="fa-solid fa-user-plus"></i> Adicionar Amigo</button>` : ""}
+      </div>
+      ${avatarHtml}
+      <h2 class="profile-name">${data.nickname || "Jogador"}</h2>
+      <p class="profile-bio">${data.bio ? data.bio : (editable ? "Toque em Editar pra adicionar uma bio." : "")}</p>
+      ${!editable && mutualCount > 0 ? `<p style="text-align:center; font-size:12px; opacity:.8;">${mutualCount} amigo${mutualCount > 1 ? "s" : ""} em comum</p>` : ""}
+      <div class="profile-stats-row">
+        <div onclick="openFriendsListModal('${uid}')" style="cursor:pointer;"><strong>${(data.friends || []).length}</strong><br><span>Amigos</span></div>
+        <div><strong>${data.xp || 0}</strong><br><span>XP</span></div>
+        <div><strong>${data.duelWins || 0}</strong><br><span>Duelos</span></div>
+        <div><strong>${(data.medals || []).length}</strong><br><span>Medalhas</span></div>
+      </div>
+      <div class="medal-row">${medals}</div>
+    `;
+  }
+}
+// fim renderProfileScreen
+
+function startProfileEdit() { profileEditMode = true; loadProfileScreen(); }
+function cancelProfileEdit() { profileEditMode = false; loadProfileScreen(); }
+
+function saveProfile(uid) {
+  const avatar = document.getElementById("profileAvatarInput").value.trim();
+  const bio = document.getElementById("profileBioInput").value.trim();
+  const nick = document.getElementById("profileNickInput").value.trim();
+
+  if (!nick) { showToast("Nickname não pode ficar vazio."); return; }
+  const proceed = () => {
+    db.collection("users").doc(uid).set({
+      avatar: avatar || "🙂", bio, nickname: nick, nicknameLower: nick.toLowerCase()
+    }, { merge: true }).then(() => {
+      currentNickname = nick;
+      renderAuth();
+      profileEditMode = false;
+      showToast("Perfil atualizado.");
+      loadProfileScreen();
+    }).catch(e => showToast("Erro: " + e.message));
+  };
+
+  if (nick.toLowerCase() !== (currentNickname || "").toLowerCase()) {
+    isNicknameTaken(nick.toLowerCase()).then(taken => {
+      if (taken) { showToast("Esse nickname já está em uso."); return; }
+      proceed();
+    });
+  } else {
+    proceed();
+  }
+}
+// fim saveProfile
+
+</script>
+</body>
+</html>
+
+  
