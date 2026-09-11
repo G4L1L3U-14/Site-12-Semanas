@@ -298,7 +298,7 @@ function migrateSubtaskData(blocks, taskList) {
   });
   const migratedTasks = (taskList || []).map(t => ({
     ...t,
-      linkedBlocks: t.linkedBlocks || t.linkedSubtasks || []
+    linkedBlocks: t.linkedBlocks || t.linkedSubtasks || []
   }));
   return { blocks: migratedBlocks, tasks: migratedTasks };
 }
@@ -334,11 +334,11 @@ function loadStateForCurrentUser() {
     }
     weekStart = currentSundayKey;
   }
-  saveState();
+  saveLocalOnly();
 }
 // fim loadStateForCurrentUser
 
-function saveState() {
+function saveLocalOnly() {
   localStorage.setItem(`wt_tasks_${currentUid}`, JSON.stringify(tasks));
   localStorage.setItem(`wt_pendingTasks_${currentUid}`, JSON.stringify(pendingTasks));
   localStorage.setItem(`wt_history_${currentUid}`, JSON.stringify(history));
@@ -347,6 +347,11 @@ function saveState() {
   localStorage.setItem(`wt_subtaskBlocks_${currentUid}`, JSON.stringify(subtaskBlocks));
   localStorage.setItem(`wt_checklists_${currentUid}`, JSON.stringify(checklists));
   localStorage.setItem(`wt_agendaItems_${currentUid}`, JSON.stringify(agendaItems));
+}
+// fim saveLocalOnly
+
+function saveState() {
+  saveLocalOnly();
   syncTasksToFirestore();
 }
 // fim saveState
@@ -898,7 +903,7 @@ function updateLevelUI() {
 // fim updateLevelUI
 
 function vibrateRankUp() {
-        if (!("vibrate" in navigator)) return;
+  if (!("vibrate" in navigator)) return;
   navigator.vibrate([120, 80, 200, 80, 320]);
 }
 
@@ -1198,7 +1203,7 @@ function reportBug() {
         status: "open"
       }).then(() => {
         showToast("Obrigado! Relato enviado.");
-          }).catch(e => showToast("Erro: " + e.message));
+      }).catch(e => showToast("Erro: " + e.message));
     }
   });
 }
