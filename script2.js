@@ -523,6 +523,7 @@ function acceptSharedMessage(messageId) {
   if (!m || !m.shareType) return;
   if (m.shareType === "checklist") acceptSharedChecklist(m.sharePayload);
   else if (m.shareType === "agenda") acceptSharedAgenda(m.sharePayload);
+  else if (m.shareType === "sharedAgendaInvite") acceptSharedAgendaInvite(m.sharePayload);
 }
 // fim acceptSharedMessage
 
