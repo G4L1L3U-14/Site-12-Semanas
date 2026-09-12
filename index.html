@@ -214,6 +214,11 @@
         <button class="menu-btn-small" onclick="changeAgendaMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
       </div>
       <div id="agendaCalendarGrid" class="agenda-grid"></div>
+      <div style="display:flex; gap:8px; margin-top:10px; align-items:center;">
+        <button class="menu-btn-small" onclick="goToTodayAgenda()"><i class="fa-solid fa-calendar-day"></i> Hoje</button>
+        <input type="number" id="agendaJumpInput" min="1" max="31" placeholder="Dia" style="width:60px; box-sizing:border-box; padding:8px; border-radius:10px; border:1px solid rgba(46,204,113,0.4); background:rgba(0,0,0,0.5); color:#eaffea;">
+        <button class="menu-btn-small" onclick="jumpToAgendaDay()"><i class="fa-solid fa-magnifying-glass"></i> Ir</button>
+      </div>
     </div>
 
     <div class="task-manager" id="agendaDayItems"></div>
@@ -402,9 +407,13 @@ function switchAccount() {
 }
 // fim switchAccount
 
-// ===== AGENDA (calendário próprio, com XP) =====
+// ===== AGENDA (calendário próprio, com XP opcional) =====
 let agendaViewMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 let agendaSelectedDateKey = todayKey;
+let openAgendaItemId = null;
+let editingAgendaItemId = null;
+const AGENDA_PERIODS = ["manha", "tarde", "noite"];
+const AGENDA_PERIOD_LABELS = { manha: "Manhã", tarde: "Tarde", noite: "Noite" };
 
 function agendaItemAppliesOnDate(item, date) {
   const dateKey = toDateKey(date);
@@ -420,23 +429,66 @@ function getAgendaItemsForDate(date) {
 }
 // fim getAgendaItemsForDate
 
-function toggleAgendaItem(itemId, dateKey) {
+function agendaItemFraction(item, dateKey) {
+  if (!item.xpEnabled) return 0;
+  const periods = (history[dateKey] && history[dateKey].agendaPeriods && history[dateKey].agendaPeriods[item.id]) || {};
+  const doneCount = AGENDA_PERIODS.filter(p => periods[p]).length;
+  return doneCount / AGENDA_PERIODS.length;
+}
+// fim agendaItemFraction
+
+function recalcAgendaItemXP(itemId, dateKey) {
+  const item = agendaItems.find(i => i.id === itemId);
+  if (!item || !item.xpEnabled) return;
+  const fraction = agendaItemFraction(item, dateKey);
+  const newValue = Math.round(item.value * fraction);
+
+  if (!history[dateKey]) history[dateKey] = {};
+  if (!history[dateKey]._agendaXP) history[dateKey]._agendaXP = {};
+  const oldValue = history[dateKey]._agendaXP[itemId] || 0;
+  xp = Math.max(0, xp + (newValue - oldValue));
+  history[dateKey]._agendaXP[itemId] = newValue;
+}
+// fim recalcAgendaItemXP
+
+function toggleAgendaPeriod(itemId, period, dateKey) {
   if (dateKey !== todayKey) return;
   const item = agendaItems.find(i => i.id === itemId);
   if (!item) return;
   if (!history[dateKey]) history[dateKey] = {};
-  if (!history[dateKey].agenda) history[dateKey].agenda = {};
-  const wasDone = !!history[dateKey].agenda[itemId];
-  history[dateKey].agenda[itemId] = !wasDone;
-  xp = Math.max(0, xp + (wasDone ? -item.value : item.value));
+  if (!history[dateKey].agendaPeriods) history[dateKey].agendaPeriods = {};
+  if (!history[dateKey].agendaPeriods[itemId]) history[dateKey].agendaPeriods[itemId] = {};
+  const state = history[dateKey].agendaPeriods[itemId];
+  state[period] = !state[period];
+
+  recalcAgendaItemXP(itemId, dateKey);
   saveState();
   updateLevelUI();
   renderAgendaDayItems();
 }
+// fim toggleAgendaPeriod
+
+function toggleAgendaItem(itemId, dateKey) {
+  if (dateKey !== todayKey) return;
+  const item = agendaItems.find(i => i.id === itemId);
+  if (!item || item.xpEnabled) return;
+  if (!history[dateKey]) history[dateKey] = {};
+  if (!history[dateKey].agenda) history[dateKey].agenda = {};
+  history[dateKey].agenda[itemId] = !history[dateKey].agenda[itemId];
+  saveState();
+  renderAgendaDayItems();
+}
 // fim toggleAgendaItem
+
+function toggleAgendaItemOpen(id) {
+  openAgendaItemId = (openAgendaItemId === id) ? null : id;
+  renderAgendaDayItems();
+}
+// fim toggleAgendaItemOpen
 
 function deleteAgendaItem(id) {
   agendaItems = agendaItems.filter(i => i.id !== id);
+  if (editingAgendaItemId === id) { editingAgendaItemId = null; renderAgendaForm(); }
   saveState();
   renderAgendaCalendar();
   renderAgendaDayItems();
@@ -450,6 +502,23 @@ function selectAgendaDate(dateKey) {
   updateAgendaTypeFields();
 }
 // fim selectAgendaDate
+
+function goToTodayAgenda() {
+  agendaViewMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  selectAgendaDate(todayKey);
+}
+// fim goToTodayAgenda
+
+function jumpToAgendaDay() {
+  const day = parseInt(document.getElementById("agendaJumpInput").value);
+  if (!day || day < 1 || day > 31) { showToast("Digite um dia válido."); return; }
+  const year = agendaViewMonth.getFullYear();
+  const month = agendaViewMonth.getMonth();
+  const maxDay = new Date(year, month + 1, 0).getDate();
+  if (day > maxDay) { showToast(`Esse mês só tem ${maxDay} dias.`); return; }
+  selectAgendaDate(toDateKey(new Date(year, month, day)));
+}
+// fim jumpToAgendaDay
 
 function changeAgendaMonth(delta) {
   agendaViewMonth = new Date(agendaViewMonth.getFullYear(), agendaViewMonth.getMonth() + delta, 1);
@@ -492,6 +561,7 @@ function renderAgendaDayItems() {
   const date = new Date(agendaSelectedDateKey + "T00:00:00");
   const items = getAgendaItemsForDate(date);
   const doneState = (history[agendaSelectedDateKey] && history[agendaSelectedDateKey].agenda) || {};
+  const periodsState = (history[agendaSelectedDateKey] && history[agendaSelectedDateKey].agendaPeriods) || {};
   const canEdit = agendaSelectedDateKey === todayKey;
 
   let html = `<h3 style="margin-top:0;">${date.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" })}</h3>`;
@@ -499,12 +569,36 @@ function renderAgendaDayItems() {
     html += `<p style="font-size:12px; opacity:.7;">Nada agendado pra esse dia.</p>`;
   } else {
     items.forEach(item => {
-      const done = !!doneState[item.id];
-      html += `
-        <div class="friend-row" style="${canEdit ? "cursor:pointer;" : "opacity:.6;"}" onclick="${canEdit ? `toggleAgendaItem('${item.id}','${agendaSelectedDateKey}')` : ""}">
-          <span>${done ? '<i class="fa-solid fa-square-check"></i>' : '<i class="fa-regular fa-square"></i>'} ${item.name} <span style="opacity:.6; font-size:11px;">(+${item.value} XP)</span></span>
-          <button class="menu-btn-small menu-btn-danger" onclick="event.stopPropagation(); deleteAgendaItem('${item.id}')"><i class="fa-solid fa-trash"></i></button>
-        </div>`;
+      const isOpen = openAgendaItemId === item.id;
+      const actionsHtml = isOpen ? `
+        <div class="task-actions" onclick="event.stopPropagation();">
+          <button class="aura-btn" onclick="editAgendaItem('${item.id}')"><i class="fa-solid fa-pen"></i> Editar</button>
+          <button class="aura-btn" onclick="shareAgendaItemViaChat('${item.id}')"><i class="fa-solid fa-share"></i> Compartilhar</button>
+          <button class="aura-danger" onclick="deleteAgendaItem('${item.id}')"><i class="fa-solid fa-trash"></i> Excluir</button>
+        </div>` : "";
+
+      if (item.xpEnabled) {
+        const periods = periodsState[item.id] || {};
+        html += `
+          <div class="task-row" onclick="toggleAgendaItemOpen('${item.id}')">
+            <span>${item.name} <span style="opacity:.6; font-size:11px;">(vale ${item.value} XP)</span></span>
+            <div class="task-days-row" onclick="event.stopPropagation();">
+              ${AGENDA_PERIODS.map(p => `
+                <button class="day-toggle ${periods[p] ? "active" : ""}" ${canEdit ? "" : "disabled style='opacity:.4;'"} onclick="toggleAgendaPeriod('${item.id}','${p}','${agendaSelectedDateKey}')">${AGENDA_PERIOD_LABELS[p]}</button>
+              `).join("")}
+            </div>
+            ${actionsHtml}
+          </div>`;
+      } else {
+        const done = !!doneState[item.id];
+        html += `
+          <div class="task-row" onclick="toggleAgendaItemOpen('${item.id}')">
+            <span onclick="event.stopPropagation(); ${canEdit ? `toggleAgendaItem('${item.id}','${agendaSelectedDateKey}')` : ""}" style="cursor:${canEdit ? "pointer" : "default"};">
+              ${done ? '<i class="fa-solid fa-square-check"></i>' : '<i class="fa-regular fa-square"></i>'} ${item.name}
+            </span>
+            ${actionsHtml}
+          </div>`;
+        }
     });
   }
   box.innerHTML = html;
@@ -526,13 +620,64 @@ function updateAgendaTypeFields() {
 }
 // fim updateAgendaTypeFields
 
+function updateAgendaXPFields() {
+  const checkEl = document.getElementById("agendaXPEnabled");
+  if (!checkEl) return;
+  const box = document.getElementById("agendaXPFieldsBox");
+  box.innerHTML = checkEl.checked ? `<label>XP total ao completar (dividido entre manhã/tarde/noite)</label><input type="number" id="agendaItemXP" value="20" min="0">` : "";
+}
+// fim updateAgendaXPFields
+
+function cancelAgendaEdit() {
+  editingAgendaItemId = null;
+  renderAgendaForm();
+}
+// fim cancelAgendaEdit
+
+function editAgendaItem(id) {
+  const item = agendaItems.find(i => i.id === id);
+  if (!item) return;
+  editingAgendaItemId = id;
+  renderAgendaForm();
+
+  document.getElementById("agendaItemName").value = item.name;
+  document.getElementById("agendaItemType").value = item.type;
+  updateAgendaTypeFields();
+  if (item.type === "weekly") {
+    (item.weekdays || []).forEach(d => {
+      const btn = document.querySelector(`#agendaTypeFieldsBox .day-toggle[data-day="${d}"]`);
+      if (btn) btn.classList.add("active");
+    });
+  } else if (item.type === "monthly") {
+    document.getElementById("agendaMonthDayInput").value = item.monthDay;
+  }
+
+  document.getElementById("agendaXPEnabled").checked = !!item.xpEnabled;
+  updateAgendaXPFields();
+  if (item.xpEnabled) document.getElementById("agendaItemXP").value = item.value;
+}
+// fim editAgendaItem
+
 function addAgendaItem() {
   const name = document.getElementById("agendaItemName").value.trim();
   const type = document.getElementById("agendaItemType").value;
-  const xpVal = parseInt(document.getElementById("agendaItemXP").value) || 0;
+  const xpEnabled = document.getElementById("agendaXPEnabled").checked;
+  const xpVal = xpEnabled ? (parseInt(document.getElementById("agendaItemXP").value) || 0) : 0;
   if (!name) { showToast("Digite um nome."); return; }
 
-  const item = { id: "ag" + Date.now() + Math.floor(Math.random() * 1000), name, type, value: xpVal };
+  let item;
+  if (editingAgendaItemId) {
+    item = agendaItems.find(i => i.id === editingAgendaItemId);
+    if (!item) { editingAgendaItemId = null; return; }
+  } else {
+    item = { id: "ag" + Date.now() + Math.floor(Math.random() * 1000) };
+  }
+
+  item.name = name;
+  item.type = type;
+  item.xpEnabled = xpEnabled;
+  item.value = xpVal;
+  delete item.date; delete item.weekdays; delete item.monthDay;
 
   if (type === "once") {
     item.date = agendaSelectedDateKey;
@@ -546,18 +691,18 @@ function addAgendaItem() {
     item.monthDay = day;
   }
 
-  agendaItems.push(item);
+  if (!editingAgendaItemId) agendaItems.push(item);
+  editingAgendaItemId = null;
+
   saveState();
-  document.getElementById("agendaItemName").value = "";
+  renderAgendaForm();
   renderAgendaCalendar();
   renderAgendaDayItems();
 }
 // fim addAgendaItem
 
-function loadAgendaScreen() {
-  agendaViewMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  agendaSelectedDateKey = todayKey;
-
+function renderAgendaForm() {
+  const isEditing = !!editingAgendaItemId;
   document.getElementById("agendaFormBody").innerHTML = `
     <div class="admin-form">
       <label>Nome</label>
@@ -569,12 +714,27 @@ function loadAgendaScreen() {
         <option value="monthly">Repete todo dia X do mês</option>
       </select>
       <div id="agendaTypeFieldsBox"></div>
-      <label>XP ao concluir</label>
-      <input type="number" id="agendaItemXP" value="20" min="0">
-      <button class="aura-btn" onclick="addAgendaItem()"><i class="fa-solid fa-plus"></i> Criar</button>
+      <label style="display:flex; align-items:center; gap:6px; margin-top:10px;">
+        <input type="checkbox" id="agendaXPEnabled" onchange="updateAgendaXPFields()" style="width:auto;">
+        Vale XP?
+      </label>
+      <div id="agendaXPFieldsBox"></div>
+      <button class="aura-btn" onclick="addAgendaItem()">${isEditing ? '<i class="fa-solid fa-check"></i> Salvar' : '<i class="fa-solid fa-plus"></i> Criar'}</button>
+      ${isEditing ? `<button class="menu-btn-small" onclick="cancelAgendaEdit()">Cancelar</button>` : ""}
     </div>
   `;
   updateAgendaTypeFields();
+  updateAgendaXPFields();
+}
+// fim renderAgendaForm
+
+function loadAgendaScreen() {
+  agendaViewMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  agendaSelectedDateKey = todayKey;
+  openAgendaItemId = null;
+  editingAgendaItemId = null;
+
+  renderAgendaForm();
   renderAgendaCalendar();
   renderAgendaDayItems();
 }
@@ -598,7 +758,8 @@ function doGoogleLogin() {
   auth.signInWithPopup(provider).catch(e => showToast("Erro: " + e.message));
 }
 // fim doGoogleLogin
-  function isNicknameTaken(nickLower) {
+
+function isNicknameTaken(nickLower) {
   return db.collection("users").where("nicknameLower", "==", nickLower).limit(1).get()
     .then(snap => !snap.empty);
 }
@@ -897,7 +1058,7 @@ function saveProfile(uid) {
   const proceed = () => {
     db.collection("users").doc(uid).set({
       avatar: avatar || "🙂", bio, nickname: nick, nicknameLower: nick.toLowerCase()
-      }, { merge: true }).then(() => {
+    }, { merge: true }).then(() => {
       currentNickname = nick;
       renderAuth();
       profileEditMode = false;

@@ -569,6 +569,7 @@ function addChecklist() {
 function deleteChecklist(id) {
   openModal({
     title: "Excluir esse checklist inteiro?",
+
     type: "confirm",
     confirmLabel: "Excluir",
     onConfirm: () => {
@@ -1169,7 +1170,7 @@ function adminGrantXP() {
           }).catch(e => showToast("Erro: " + e.message));
         }
       });
-    }
+      }
   });
 }
 // fim adminGrantXP
