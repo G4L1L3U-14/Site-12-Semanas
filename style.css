@@ -251,6 +251,7 @@ h2 { text-align: center; margin-bottom: 10px; text-shadow: 0 0 10px rgba(46,204,
   color: #ffb347;
   text-shadow: 0 0 10px rgba(255,179,71,0.6);
 }
+
 #bannedOverlay {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.97);
@@ -260,6 +261,7 @@ h2 { text-align: center; margin-bottom: 10px; text-shadow: 0 0 10px rgba(46,204,
   text-align: center; padding: 30px; box-sizing: border-box;
 }
 #bannedOverlay.hidden { display: none; }
+
 #promotionOverlay {
   position: fixed; inset: 0;
   background: radial-gradient(circle, rgba(0,0,0,0.95), #000);
@@ -306,7 +308,7 @@ h2 { text-align: center; margin-bottom: 10px; text-shadow: 0 0 10px rgba(46,204,
 .promo-label { font-size: 0.85rem; letter-spacing: 4px; text-transform: uppercase; color: #7CFFB2; opacity: 0.85; }
 #promotionRank {
   font-size: 2.6rem; font-weight: 900; text-transform: uppercase; letter-spacing: 3px;
-    background: linear-gradient(135deg, #fff, #2ecc71, #ffd966, #2ecc71, #fff);
+  background: linear-gradient(135deg, #fff, #2ecc71, #ffd966, #2ecc71, #fff);
   background-size: 300% auto;
   -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: shimmerRank 3s linear infinite;
@@ -523,11 +525,12 @@ th { background: rgba(30,40,35,0.8); color: #2ecc71; font-weight: bold; font-siz
   margin-bottom: 12px; font-size: 14px; font-family: inherit;
 }
 .admin-form label { display: block; font-size: 11px; opacity: 0.8; margin-top: 8px; }
-.admin-form input, .admin-form textarea, .admin-form select {
+.admin-form input:not([type="checkbox"]), .admin-form textarea, .admin-form select {
   width: 100%; box-sizing: border-box; padding: 10px; border-radius: 10px;
   border: 1px solid rgba(46,204,113,0.4); background: rgba(0,0,0,0.5); color: #eaffea;
   margin-top: 4px; margin-bottom: 8px; font-family: inherit; font-size: 13px;
 }
+.admin-form input[type="checkbox"] { width: auto; accent-color: #2ecc71; }
 .modal-actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
 
 #toast {
