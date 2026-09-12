@@ -207,6 +207,9 @@
     <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
     <h2><i class="fa-solid fa-calendar-days"></i> Agenda</h2>
 
+    <div id="agendaModeTabs" style="display:flex; gap:8px; margin-bottom:10px;"></div>
+    <div class="task-manager" id="sharedAgendaControls"></div>
+
     <div class="task-manager">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
         <button class="menu-btn-small" onclick="changeAgendaMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
@@ -414,6 +417,16 @@ let openAgendaItemId = null;
 let editingAgendaItemId = null;
 const AGENDA_PERIODS = ["manha", "tarde", "noite"];
 const AGENDA_PERIOD_LABELS = { manha: "Manhã", tarde: "Tarde", noite: "Noite" };
+let sharedAgendaId = null;
+let sharedAgendaItems = [];
+let sharedAgendaMembers = [];
+let sharedAgendaUnsubscribe = null;
+let agendaViewMode = "personal";
+
+function agendaHistoryKey(itemId) {
+  return agendaViewMode === "shared" ? ("shared:" + itemId) : itemId;
+}
+// fim agendaHistoryKey
 
 function agendaItemAppliesOnDate(item, date) {
   const dateKey = toDateKey(date);
@@ -425,40 +438,46 @@ function agendaItemAppliesOnDate(item, date) {
 // fim agendaItemAppliesOnDate
 
 function getAgendaItemsForDate(date) {
-  return agendaItems.filter(item => agendaItemAppliesOnDate(item, date));
+  const source = agendaViewMode === "shared" ? sharedAgendaItems : agendaItems;
+  return source.filter(item => agendaItemAppliesOnDate(item, date));
 }
 // fim getAgendaItemsForDate
 
 function agendaItemFraction(item, dateKey) {
   if (!item.xpEnabled) return 0;
-  const periods = (history[dateKey] && history[dateKey].agendaPeriods && history[dateKey].agendaPeriods[item.id]) || {};
+  const key = agendaHistoryKey(item.id);
+  const periods = (history[dateKey] && history[dateKey].agendaPeriods && history[dateKey].agendaPeriods[key]) || {};
   const doneCount = AGENDA_PERIODS.filter(p => periods[p]).length;
   return doneCount / AGENDA_PERIODS.length;
 }
 // fim agendaItemFraction
 
 function recalcAgendaItemXP(itemId, dateKey) {
-  const item = agendaItems.find(i => i.id === itemId);
+  const source = agendaViewMode === "shared" ? sharedAgendaItems : agendaItems;
+  const item = source.find(i => i.id === itemId);
   if (!item || !item.xpEnabled) return;
   const fraction = agendaItemFraction(item, dateKey);
   const newValue = Math.round(item.value * fraction);
+  const key = agendaHistoryKey(itemId);
 
   if (!history[dateKey]) history[dateKey] = {};
   if (!history[dateKey]._agendaXP) history[dateKey]._agendaXP = {};
-  const oldValue = history[dateKey]._agendaXP[itemId] || 0;
+  const oldValue = history[dateKey]._agendaXP[key] || 0;
   xp = Math.max(0, xp + (newValue - oldValue));
-  history[dateKey]._agendaXP[itemId] = newValue;
+  history[dateKey]._agendaXP[key] = newValue;
 }
 // fim recalcAgendaItemXP
 
 function toggleAgendaPeriod(itemId, period, dateKey) {
   if (dateKey !== todayKey) return;
-  const item = agendaItems.find(i => i.id === itemId);
+  const source = agendaViewMode === "shared" ? sharedAgendaItems : agendaItems;
+  const item = source.find(i => i.id === itemId);
   if (!item) return;
+  const key = agendaHistoryKey(itemId);
   if (!history[dateKey]) history[dateKey] = {};
   if (!history[dateKey].agendaPeriods) history[dateKey].agendaPeriods = {};
-  if (!history[dateKey].agendaPeriods[itemId]) history[dateKey].agendaPeriods[itemId] = {};
-  const state = history[dateKey].agendaPeriods[itemId];
+  if (!history[dateKey].agendaPeriods[key]) history[dateKey].agendaPeriods[key] = {};
+  const state = history[dateKey].agendaPeriods[key];
   state[period] = !state[period];
 
   recalcAgendaItemXP(itemId, dateKey);
@@ -470,11 +489,13 @@ function toggleAgendaPeriod(itemId, period, dateKey) {
 
 function toggleAgendaItem(itemId, dateKey) {
   if (dateKey !== todayKey) return;
-  const item = agendaItems.find(i => i.id === itemId);
+  const source = agendaViewMode === "shared" ? sharedAgendaItems : agendaItems;
+  const item = source.find(i => i.id === itemId);
   if (!item || item.xpEnabled) return;
+  const key = agendaHistoryKey(itemId);
   if (!history[dateKey]) history[dateKey] = {};
   if (!history[dateKey].agenda) history[dateKey].agenda = {};
-  history[dateKey].agenda[itemId] = !history[dateKey].agenda[itemId];
+  history[dateKey].agenda[key] = !history[dateKey].agenda[key];
   saveState();
   renderAgendaDayItems();
 }
@@ -487,9 +508,15 @@ function toggleAgendaItemOpen(id) {
 // fim toggleAgendaItemOpen
 
 function deleteAgendaItem(id) {
-  agendaItems = agendaItems.filter(i => i.id !== id);
+  if (agendaViewMode === "shared") {
+    if (!sharedAgendaId) return;
+    sharedAgendaItems = sharedAgendaItems.filter(i => i.id !== id);
+    db.collection("sharedAgendas").doc(sharedAgendaId).update({ items: sharedAgendaItems });
+  } else {
+    agendaItems = agendaItems.filter(i => i.id !== id);
+    saveState();
+  }
   if (editingAgendaItemId === id) { editingAgendaItemId = null; renderAgendaForm(); }
-  saveState();
   renderAgendaCalendar();
   renderAgendaDayItems();
 }
@@ -569,16 +596,17 @@ function renderAgendaDayItems() {
     html += `<p style="font-size:12px; opacity:.7;">Nada agendado pra esse dia.</p>`;
   } else {
     items.forEach(item => {
+      const key = agendaHistoryKey(item.id);
       const isOpen = openAgendaItemId === item.id;
       const actionsHtml = isOpen ? `
         <div class="task-actions" onclick="event.stopPropagation();">
           <button class="aura-btn" onclick="editAgendaItem('${item.id}')"><i class="fa-solid fa-pen"></i> Editar</button>
-          <button class="aura-btn" onclick="shareAgendaItemViaChat('${item.id}')"><i class="fa-solid fa-share"></i> Compartilhar</button>
+          ${agendaViewMode === "personal" ? `<button class="aura-btn" onclick="shareAgendaItemViaChat('${item.id}')"><i class="fa-solid fa-share"></i> Compartilhar</button>` : ""}
           <button class="aura-danger" onclick="deleteAgendaItem('${item.id}')"><i class="fa-solid fa-trash"></i> Excluir</button>
         </div>` : "";
 
       if (item.xpEnabled) {
-        const periods = periodsState[item.id] || {};
+        const periods = periodsState[key] || {};
         html += `
           <div class="task-row" onclick="toggleAgendaItemOpen('${item.id}')">
             <span>${item.name} <span style="opacity:.6; font-size:11px;">(vale ${item.value} XP)</span></span>
@@ -590,7 +618,7 @@ function renderAgendaDayItems() {
             ${actionsHtml}
           </div>`;
       } else {
-        const done = !!doneState[item.id];
+        const done = !!doneState[key];
         html += `
           <div class="task-row" onclick="toggleAgendaItemOpen('${item.id}')">
             <span onclick="event.stopPropagation(); ${canEdit ? `toggleAgendaItem('${item.id}','${agendaSelectedDateKey}')` : ""}" style="cursor:${canEdit ? "pointer" : "default"};">
@@ -598,7 +626,7 @@ function renderAgendaDayItems() {
             </span>
             ${actionsHtml}
           </div>`;
-        }
+      }
     });
   }
   box.innerHTML = html;
@@ -635,7 +663,8 @@ function cancelAgendaEdit() {
 // fim cancelAgendaEdit
 
 function editAgendaItem(id) {
-  const item = agendaItems.find(i => i.id === id);
+  const source = agendaViewMode === "shared" ? sharedAgendaItems : agendaItems;
+  const item = source.find(i => i.id === id);
   if (!item) return;
   editingAgendaItemId = id;
   renderAgendaForm();
@@ -665,9 +694,13 @@ function addAgendaItem() {
   const xpVal = xpEnabled ? (parseInt(document.getElementById("agendaItemXP").value) || 0) : 0;
   if (!name) { showToast("Digite um nome."); return; }
 
+  const isShared = agendaViewMode === "shared";
+  if (isShared && !sharedAgendaId) { showToast("Você não faz parte de uma agenda compartilhada."); return; }
+
+  const source = isShared ? sharedAgendaItems : agendaItems;
   let item;
   if (editingAgendaItemId) {
-    item = agendaItems.find(i => i.id === editingAgendaItemId);
+    item = source.find(i => i.id === editingAgendaItemId);
     if (!item) { editingAgendaItemId = null; return; }
   } else {
     item = { id: "ag" + Date.now() + Math.floor(Math.random() * 1000) };
@@ -691,10 +724,15 @@ function addAgendaItem() {
     item.monthDay = day;
   }
 
-  if (!editingAgendaItemId) agendaItems.push(item);
+  if (isShared) {
+    if (!editingAgendaItemId) sharedAgendaItems.push(item);
+    db.collection("sharedAgendas").doc(sharedAgendaId).update({ items: sharedAgendaItems });
+  } else {
+    if (!editingAgendaItemId) agendaItems.push(item);
+    saveState();
+  }
   editingAgendaItemId = null;
 
-  saveState();
   renderAgendaForm();
   renderAgendaCalendar();
   renderAgendaDayItems();
@@ -733,12 +771,144 @@ function loadAgendaScreen() {
   agendaSelectedDateKey = todayKey;
   openAgendaItemId = null;
   editingAgendaItemId = null;
+  agendaViewMode = "personal";
 
+  renderAgendaModeTabs();
+  renderSharedAgendaControls();
   renderAgendaForm();
   renderAgendaCalendar();
   renderAgendaDayItems();
 }
 // fim loadAgendaScreen
+
+function switchAgendaMode(mode) {
+  agendaViewMode = mode;
+  editingAgendaItemId = null;
+  openAgendaItemId = null;
+  renderAgendaModeTabs();
+  renderAgendaForm();
+  renderAgendaCalendar();
+  renderAgendaDayItems();
+}
+// fim switchAgendaMode
+
+function renderAgendaModeTabs() {
+  const box = document.getElementById("agendaModeTabs");
+  if (!box) return;
+  box.innerHTML = `
+    <button class="menu-btn-small" style="${agendaViewMode === "personal" ? "opacity:1;" : "opacity:.5;"}" onclick="switchAgendaMode('personal')"><i class="fa-solid fa-user"></i> Minha Agenda</button>
+    <button class="menu-btn-small" style="${agendaViewMode === "shared" ? "opacity:1;" : "opacity:.5;"}" onclick="switchAgendaMode('shared')"><i class="fa-solid fa-user-group"></i> Compartilhada</button>
+  `;
+}
+// fim renderAgendaModeTabs
+
+function renderSharedAgendaControls() {
+  const box = document.getElementById("sharedAgendaControls");
+  if (!box) return;
+  if (!sharedAgendaId) {
+    box.innerHTML = `<button class="aura-btn" onclick="createSharedAgenda()"><i class="fa-solid fa-plus"></i> Criar Agenda Compartilhada</button>`;
+  } else {
+    box.innerHTML = `
+      <p style="font-size:12px; opacity:.8;">Membros: ${sharedAgendaMembers.length}/4</p>
+      ${sharedAgendaMembers.length < 4 ? `<button class="aura-btn" onclick="inviteToSharedAgenda()"><i class="fa-solid fa-user-plus"></i> Convidar Amigo</button>` : ""}
+    `;
+  }
+}
+// fim renderSharedAgendaControls
+
+function listenToSharedAgenda() {
+  if (!currentUser) return;
+  db.collection("users").doc(currentUser.uid).get().then(docSnap => {
+    sharedAgendaId = (docSnap.data() || {}).sharedAgendaId || null;
+    if (!sharedAgendaId) { sharedAgendaItems = []; sharedAgendaMembers = []; return; }
+
+    if (sharedAgendaUnsubscribe) sharedAgendaUnsubscribe();
+    sharedAgendaUnsubscribe = db.collection("sharedAgendas").doc(sharedAgendaId).onSnapshot(snap => {
+      if (!snap.exists) { sharedAgendaId = null; sharedAgendaItems = []; sharedAgendaMembers = []; return; }
+      const d = snap.data();
+      sharedAgendaItems = d.items || [];
+      sharedAgendaMembers = d.members || [];
+      const screenEl = document.getElementById("screenAgenda");
+      if (screenEl && !screenEl.classList.contains("hidden")) {
+        renderSharedAgendaControls();
+        renderAgendaCalendar();
+        renderAgendaDayItems();
+      }
+    });
+  });
+}
+// fim listenToSharedAgenda
+
+function createSharedAgenda() {
+  if (!currentUser) return;
+  if (sharedAgendaId) { showToast("Você já faz parte de uma agenda compartilhada."); return; }
+  openModal({
+    title: "Nome da agenda compartilhada:",
+    type: "text",
+    confirmLabel: "Criar",
+    onConfirm: (name) => {
+      const agendaName = (name || "").trim() || "Agenda em grupo";
+      db.collection("sharedAgendas").add({
+        name: agendaName,
+        members: [currentUser.uid],
+        createdBy: currentUser.uid,
+        items: []
+      }).then(ref => {
+        db.collection("users").doc(currentUser.uid).set({ sharedAgendaId: ref.id }, { merge: true });
+        showToast("Agenda compartilhada criada!");
+        listenToSharedAgenda();
+      });
+    }
+  });
+}
+// fim createSharedAgenda
+
+function inviteToSharedAgenda() {
+  if (!sharedAgendaId) { showToast("Crie uma agenda compartilhada primeiro."); return; }
+  if (sharedAgendaMembers.length >= 4) { showToast("Essa agenda já está com o máximo de 4 pessoas."); return; }
+  openModal({
+    title: "Nickname de quem você quer convidar:",
+    type: "text",
+    confirmLabel: "Convidar",
+    onConfirm: (nick) => {
+      const target = (nick || "").trim();
+      if (!target) return;
+      db.collection("users").where("nicknameLower", "==", target.toLowerCase()).limit(1).get().then(snap => {
+        if (snap.empty) { showToast("Nickname não encontrado."); return; }
+        const toUid = snap.docs[0].id;
+        const chatId = getChatId(toUid);
+        const text = `Te convidou pra uma agenda compartilhada`;
+        db.collection("chats").doc(chatId).collection("messages").add({
+          fromUid: currentUser.uid, text, shareType: "sharedAgendaInvite",
+          sharePayload: { agendaId: sharedAgendaId }, createdAt: Date.now()
+        });
+        db.collection("chats").doc(chatId).set({
+          participants: [currentUser.uid, toUid], lastMessage: text, lastMessageAt: Date.now(),
+          lastMessageFrom: currentUser.uid, lastReadBy: { [currentUser.uid]: Date.now() }
+        }, { merge: true });
+        showToast(`Convite enviado pra ${target}!`);
+      });
+    }
+  });
+}
+// fim inviteToSharedAgenda
+
+function acceptSharedAgendaInvite(payload) {
+  db.collection("sharedAgendas").doc(payload.agendaId).get().then(snap => {
+    if (!snap.exists) { showToast("Essa agenda não existe mais."); return; }
+    const members = snap.data().members || [];
+    if (members.includes(currentUser.uid)) { showToast("Você já faz parte dessa agenda."); return; }
+    if (members.length >= 4) { showToast("Essa agenda já está cheia."); return; }
+    db.collection("sharedAgendas").doc(payload.agendaId).update({
+      members: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
+    }).then(() => {
+      db.collection("users").doc(currentUser.uid).set({ sharedAgendaId: payload.agendaId }, { merge: true });
+      showToast("Você entrou na agenda compartilhada!");
+      listenToSharedAgenda();
+    });
+  });
+}
+// fim acceptSharedAgendaInvite
 
 // ===== INIT =====
 loadStateForCurrentUser();
@@ -863,6 +1033,7 @@ function refreshForUser() {
   checkDuelWeekRollover();
   refreshNotifBadge();
   checkBanStatus();
+  listenToSharedAgenda();
 }
 // fim refreshForUser
 
