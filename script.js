@@ -553,35 +553,6 @@ function toggleSubtask(itemId, dateKey) {
 }
 // fim toggleSubtask
 
-function renderTodaySubtasks() {
-  const box = document.getElementById("todaySubtasksBox");
-  if (!box) return;
-
-  const activeToday = activeTasksOnDate(todayKey).filter(t => t.linkedBlocks && t.linkedBlocks.length > 0);
-  if (activeToday.length === 0) { box.innerHTML = ""; return; }
-
-  const subState = (history[todayKey] && history[todayKey].subtasks) || {};
-  let html = `<h3><i class="fa-solid fa-list-check"></i> Subtarefas de Hoje</h3>`;
-
-  activeToday.forEach(task => {
-    html += `<div style="margin-bottom:10px;"><strong style="font-size:12px; opacity:.85;">${task.name}</strong>`;
-    (task.linkedBlocks || []).forEach(bid => {
-      const block = subtaskBlocks.find(b => b.id === bid);
-      if (!block) return;
-      (block.items || []).forEach(item => {
-        const done = !!subState[item.id];
-        html += `
-          <div class="friend-row" style="cursor:pointer;" onclick="toggleSubtask('${item.id}', '${todayKey}')">
-            <span>${done ? '<i class="fa-solid fa-square-check"></i>' : '<i class="fa-regular fa-square"></i>'} ${block.name}: ${item.name}</span>
-          </div>`;
-      });
-    });
-    html += `</div>`;
-  });
-
-  box.innerHTML = html;
-}
-// fim renderTodaySubtasks
 
 // ===== CHECKLIST LIVRE (mercado, farmácia, etc — sem XP, sem ligação com tarefas) =====
 function addChecklist() {
@@ -1227,7 +1198,6 @@ function reportBug() {
   });
 }
 // fim reportBug
-
 function loadBugReportsInAdmin() {
   const box = document.getElementById("bugReportsBox");
   box.innerHTML = "<p>Carregando...</p>";

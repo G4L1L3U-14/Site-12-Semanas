@@ -797,4 +797,51 @@ function checkBanStatus() {
     }
   });
 }
-// fim checkBanStatus  
+// fim checkBanStatus
+
+let openTodaySubtaskBlockId = null;
+
+function toggleTodaySubtaskBlock(id) {
+  openTodaySubtaskBlockId = (openTodaySubtaskBlockId === id) ? null : id;
+  renderTodaySubtasks();
+}
+// fim toggleTodaySubtaskBlock
+
+function renderTodaySubtasks() {
+  const box = document.getElementById("todaySubtasksBox");
+  if (!box) return;
+
+  const activeToday = activeTasksOnDate(todayKey).filter(t => t.linkedBlocks && t.linkedBlocks.length > 0);
+  if (activeToday.length === 0) { box.innerHTML = ""; return; }
+
+  const subState = (history[todayKey] && history[todayKey].subtasks) || {};
+  const blockIds = [...new Set(activeToday.flatMap(t => t.linkedBlocks || []))];
+
+  let html = `<h3><i class="fa-solid fa-list-check"></i> Subtarefas de Hoje</h3>`;
+
+  blockIds.forEach(bid => {
+    const block = subtaskBlocks.find(b => b.id === bid);
+    const items = block ? (block.items || []) : [];
+    if (!block || items.length === 0) return;
+
+    const doneCount = items.filter(i => subState[i.id]).length;
+    const isOpen = openTodaySubtaskBlockId === bid;
+
+    html += `
+      <div class="task-row" onclick="toggleTodaySubtaskBlock('${bid}')">
+        <i class="fa-solid fa-folder"></i> ${block.name}
+        <span style="font-size:10px; opacity:.7; margin-left:6px;">(${doneCount}/${items.length})</span>
+        ${isOpen ? `
+          <div class="task-days-row" onclick="event.stopPropagation();" style="flex-direction:column; align-items:stretch;">
+            ${items.map(item => `
+              <div class="friend-row" style="cursor:pointer;" onclick="toggleSubtask('${item.id}', '${todayKey}')">
+                <span>${subState[item.id] ? '<i class="fa-solid fa-square-check"></i>' : '<i class="fa-regular fa-square"></i>'} ${item.name}</span>
+              </div>
+            `).join("")}
+          </div>` : ""}
+      </div>`;
+  });
+
+  box.innerHTML = html;
+}
+// fim renderTodaySubtasks
