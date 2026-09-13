@@ -420,6 +420,9 @@ const AGENDA_PERIOD_LABELS = { manha: "Manhã", tarde: "Tarde", noite: "Noite" }
 let sharedAgendaId = null;
 let sharedAgendaItems = [];
 let sharedAgendaMembers = [];
+let sharedAgendaName = "";
+let sharedAgendaCreatedBy = null;
+let sharedAgendaMemberNames = {};
 let sharedAgendaUnsubscribe = null;
 let agendaViewMode = "personal";
 
@@ -807,27 +810,109 @@ function renderSharedAgendaControls() {
   if (!box) return;
   if (!sharedAgendaId) {
     box.innerHTML = `<button class="aura-btn" onclick="createSharedAgenda()"><i class="fa-solid fa-plus"></i> Criar Agenda Compartilhada</button>`;
-  } else {
-    box.innerHTML = `
-      <p style="font-size:12px; opacity:.8;">Membros: ${sharedAgendaMembers.length}/4</p>
-      ${sharedAgendaMembers.length < 4 ? `<button class="aura-btn" onclick="inviteToSharedAgenda()"><i class="fa-solid fa-user-plus"></i> Convidar Amigo</button>` : ""}
-    `;
+    return;
   }
+
+  const isCreator = sharedAgendaCreatedBy === currentUser.uid;
+  let html = `<h3 style="margin-top:0;">${sharedAgendaName || "Agenda em grupo"}</h3>`;
+  html += `<p style="font-size:12px; opacity:.8;">Membros: ${sharedAgendaMembers.length}/4</p>`;
+  html += sharedAgendaMembers.map(uid => {
+    const name = sharedAgendaMemberNames[uid] || "...";
+    const isMe = uid === currentUser.uid;
+    return `<div class="friend-row">
+      <span>${name}${isMe ? " (você)" : ""}</span>
+      ${isCreator && !isMe ? `<button class="menu-btn-small menu-btn-danger" onclick="removeMemberFromSharedAgenda('${uid}')"><i class="fa-solid fa-user-minus"></i> Remover</button>` : ""}
+    </div>`;
+  }).join("");
+
+  if (sharedAgendaMembers.length < 4) {
+    html += `<button class="aura-btn" onclick="inviteToSharedAgenda()"><i class="fa-solid fa-user-plus"></i> Convidar Amigo</button>`;
+  }
+  html += `<button class="aura-danger" onclick="leaveSharedAgenda()"><i class="fa-solid fa-right-from-bracket"></i> ${isCreator ? "Excluir Agenda" : "Sair da Agenda"}</button>`;
+
+  box.innerHTML = html;
 }
 // fim renderSharedAgendaControls
+
+function loadSharedAgendaMemberNames() {
+  const promises = sharedAgendaMembers.map(uid => db.collection("users").doc(uid).get());
+  Promise.all(promises).then(snaps => {
+    sharedAgendaMemberNames = {};
+    snaps.forEach((s, i) => {
+      sharedAgendaMemberNames[sharedAgendaMembers[i]] = s.exists ? (s.data().nickname || "Jogador") : "Jogador";
+    });
+    renderSharedAgendaControls();
+  });
+}
+// fim loadSharedAgendaMemberNames
+
+function leaveSharedAgenda() {
+  if (!sharedAgendaId) return;
+  const isCreator = sharedAgendaCreatedBy === currentUser.uid;
+
+  openModal({
+    title: isCreator ? "Excluir essa agenda compartilhada pra todo mundo? Não tem como desfazer." : "Sair dessa agenda compartilhada?",
+    type: "confirm",
+    confirmLabel: isCreator ? "Excluir" : "Sair",
+    onConfirm: () => {
+      const idToClear = sharedAgendaId;
+      if (isCreator) {
+        db.collection("sharedAgendas").doc(idToClear).delete();
+      } else {
+        db.collection("sharedAgendas").doc(idToClear).update({
+          members: firebase.firestore.FieldValue.arrayRemove(currentUser.uid)
+        });
+      }
+      db.collection("users").doc(currentUser.uid).set({ sharedAgendaId: null }, { merge: true });
+      sharedAgendaId = null;
+      sharedAgendaItems = [];
+      sharedAgendaMembers = [];
+      sharedAgendaName = "";
+      if (sharedAgendaUnsubscribe) { sharedAgendaUnsubscribe(); sharedAgendaUnsubscribe = null; }
+      switchAgendaMode("personal");
+      showToast(isCreator ? "Agenda excluída." : "Você saiu da agenda.");
+    }
+  });
+}
+// fim leaveSharedAgenda
+
+function removeMemberFromSharedAgenda(uid) {
+  if (!sharedAgendaId || sharedAgendaCreatedBy !== currentUser.uid) return;
+  db.collection("sharedAgendas").doc(sharedAgendaId).update({
+    members: firebase.firestore.FieldValue.arrayRemove(uid)
+  }).then(() => {
+    showToast("Membro removido.");
+  });
+}
+// fim removeMemberFromSharedAgenda
 
 function listenToSharedAgenda() {
   if (!currentUser) return;
   db.collection("users").doc(currentUser.uid).get().then(docSnap => {
     sharedAgendaId = (docSnap.data() || {}).sharedAgendaId || null;
-    if (!sharedAgendaId) { sharedAgendaItems = []; sharedAgendaMembers = []; return; }
+    if (!sharedAgendaId) { sharedAgendaItems = []; sharedAgendaMembers = []; sharedAgendaName = ""; return; }
 
     if (sharedAgendaUnsubscribe) sharedAgendaUnsubscribe();
     sharedAgendaUnsubscribe = db.collection("sharedAgendas").doc(sharedAgendaId).onSnapshot(snap => {
-      if (!snap.exists) { sharedAgendaId = null; sharedAgendaItems = []; sharedAgendaMembers = []; return; }
+      if (!snap.exists) {
+        sharedAgendaId = null; sharedAgendaItems = []; sharedAgendaMembers = []; sharedAgendaName = "";
+        db.collection("users").doc(currentUser.uid).set({ sharedAgendaId: null }, { merge: true });
+        return;
+      }
       const d = snap.data();
       sharedAgendaItems = d.items || [];
       sharedAgendaMembers = d.members || [];
+      sharedAgendaName = d.name || "";
+      sharedAgendaCreatedBy = d.createdBy || null;
+
+      if (!sharedAgendaMembers.includes(currentUser.uid)) {
+        db.collection("users").doc(currentUser.uid).set({ sharedAgendaId: null }, { merge: true });
+        sharedAgendaId = null; sharedAgendaItems = []; sharedAgendaMembers = []; sharedAgendaName = "";
+        showToast("Você foi removido dessa agenda compartilhada.");
+      } else {
+        loadSharedAgendaMemberNames();
+      }
+
       const screenEl = document.getElementById("screenAgenda");
       if (screenEl && !screenEl.classList.contains("hidden")) {
         renderSharedAgendaControls();
