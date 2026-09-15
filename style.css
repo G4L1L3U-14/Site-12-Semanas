@@ -530,7 +530,43 @@ th { background: rgba(30,40,35,0.8); color: #2ecc71; font-weight: bold; font-siz
   border: 1px solid rgba(46,204,113,0.4); background: rgba(0,0,0,0.5); color: #eaffea;
   margin-top: 4px; margin-bottom: 8px; font-family: inherit; font-size: 13px;
 }
-.admin-form input[type="checkbox"] { width: auto; accent-color: #2ecc71; }
+.admin-form input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border: 2px solid rgba(46,204,113,0.6);
+  border-radius: 5px;
+  background: rgba(0,0,0,0.5);
+  cursor: pointer;
+  position: relative;
+  margin: 0;
+}
+.admin-form input[type="checkbox"]:checked {
+  background: #2ecc71;
+  border-color: #2ecc71;
+}
+.admin-form input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 6px; top: 2px;
+  width: 5px; height: 10px;
+  border: solid #08120c;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.modal-box input:-webkit-autofill,
+.modal-box input:-webkit-autofill:hover,
+.modal-box input:-webkit-autofill:focus,
+.admin-form input:-webkit-autofill,
+.admin-form input:-webkit-autofill:hover,
+.admin-form input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #eaffea;
+  -webkit-box-shadow: 0 0 0px 1000px rgba(0,0,0,0.5) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
 .modal-actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
 
 #toast {
