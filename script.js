@@ -74,6 +74,15 @@ function createNotification(toUid, type, title, message, meta) {
 }
 // fim createNotification
 
+function notifySharedAgendaMembers(message, excludeUid) {
+  if (!sharedAgendaMembers || sharedAgendaMembers.length === 0) return;
+  sharedAgendaMembers.forEach(uid => {
+    if (uid === (excludeUid || currentUser.uid)) return;
+    createNotification(uid, "shared_agenda_update", "Agenda Compartilhada", message);
+  });
+}
+// fim notifySharedAgendaMembers
+
 function refreshNotifBadge() {
   const badge = document.getElementById("notifBadge");
   if (!currentUser) { badge.classList.add("hidden"); return; }
@@ -406,10 +415,17 @@ function dayOfWeekFromKey(dateKey) {
 }
 // fim dayOfWeekFromKey
 
+function taskAppliesOnDate(task, date) {
+  const type = task.scheduleType || "weekly";
+  if (type === "once") return toDateKey(date) === task.onceDate;
+  if (type === "monthly") return date.getDate() === task.monthDay;
+  return (task.days || [0,1,2,3,4,5,6]).includes(date.getDay());
+}
+// fim taskAppliesOnDate
+
 function activeTasksOnDate(dateKey) {
-  const dow = dayOfWeekFromKey(dateKey);
-  if (dow === null) return tasks;
-  return tasks.filter(t => (t.days || [0,1,2,3,4,5,6]).includes(dow));
+  const date = new Date(dateKey + "T00:00:00");
+  return tasks.filter(t => taskAppliesOnDate(t, date));
 }
 // fim activeTasksOnDate
 
@@ -569,7 +585,6 @@ function addChecklist() {
 function deleteChecklist(id) {
   openModal({
     title: "Excluir esse checklist inteiro?",
-
     type: "confirm",
     confirmLabel: "Excluir",
     onConfirm: () => {
@@ -768,8 +783,8 @@ function toggle(taskId, dateKey) {
 
   const task = tasks.find(t => t.id === taskId);
   if (!task) return;
-  const dow = dayOfWeekFromKey(dateKey);
-  if (dow !== null && (task.days || [0,1,2,3,4,5,6]).indexOf(dow) === -1) return;
+  const dateObj = new Date(dateKey + "T00:00:00");
+  if (!taskAppliesOnDate(task, dateObj)) return;
 
   if (!history[dateKey]) history[dateKey] = {};
   history[dateKey][taskId] = !history[dateKey][taskId];
@@ -967,7 +982,8 @@ function renderTaskManager() {
     list.innerHTML += `
       <div class="task-row" onclick="toggleTaskActions('${task.id}')">
         ${task.name}
-        ${taskDays.length < 7 ? `<span style="font-size:10px; opacity:.7; margin-left:6px;">(${taskDays.map(i => dayLabels[i]).join(", ")})</span>` : ""}
+        ${task.fromAgenda ? `<span style="font-size:10px; opacity:.7; margin-left:6px;"><i class="fa-solid fa-calendar-days"></i> ${task.scheduleType === "once" ? task.onceDate : "todo dia " + task.monthDay}</span>` :
+          (taskDays.length < 7 ? `<span style="font-size:10px; opacity:.7; margin-left:6px;">(${taskDays.map(i => dayLabels[i]).join(", ")})</span>` : "")}
         ${linked.length > 0 ? `<span style="font-size:10px; opacity:.7; margin-left:6px;"><i class="fa-solid fa-link"></i> ${linked.length} bloco(s)</span>` : ""}
         ${isOpen ? `
           <div class="task-actions" onclick="event.stopPropagation();">
@@ -976,7 +992,8 @@ function renderTaskManager() {
             <button class="aura-danger" onclick="deleteTask('${task.id}')"><i class="fa-solid fa-trash"></i> Excluir</button>
           </div>
           <div class="task-days-row" onclick="event.stopPropagation();">
-            ${dayLabels.map((lbl, i) => `
+            ${task.fromAgenda ? `<span style="font-size:11px; opacity:.7;"><i class="fa-solid fa-calendar-days"></i> Agendada via Agenda — edite a data por lá.</span>` :
+              dayLabels.map((lbl, i) => `
               <button class="day-toggle ${taskDays.includes(i) ? "active" : ""}" onclick="toggleTaskDay('${task.id}', ${i})">${lbl}</button>
             `).join("")}
           </div>
@@ -1027,14 +1044,14 @@ function buildTable() {
   table.innerHTML += header;
 
   tasks.forEach(task => {
-    const taskDays = task.days || [0,1,2,3,4,5,6];
-    let row = `<tr><td class="task-col task">${task.name}${(task.linkedBlocks && task.linkedBlocks.length > 0) ? ' <i class="fa-solid fa-link" style="font-size:10px; opacity:.6;"></i>' : ''}</td>`;
+    const fromAgendaIcon = task.fromAgenda ? ' <i class="fa-solid fa-calendar-days" style="font-size:10px; opacity:.6;" title="Criada pela Agenda"></i>' : '';
+    let row = `<tr><td class="task-col task">${task.name}${(task.linkedBlocks && task.linkedBlocks.length > 0) ? ' <i class="fa-solid fa-link" style="font-size:10px; opacity:.6;"></i>' : ''}${fromAgendaIcon}</td>`;
     let done = 0, activeDayCount = 0;
 
     weekDates.forEach((d, i) => {
       const dateKey = toDateKey(d);
 
-      if (!taskDays.includes(i)) {
+      if (!taskAppliesOnDate(task, d)) {
         row += `<td class="cell inactive">—</td>`;
         return;
       }
@@ -1075,10 +1092,10 @@ function buildBars() {
   for (let i = 0; i < 7; i++) {
     const d = addDays(currentSunday, i);
     const dateKey = toDateKey(d);
-    const activeTasks = tasks.filter(t => (t.days || [0,1,2,3,4,5,6]).includes(i));
+    const activeTasksToday = tasks.filter(t => taskAppliesOnDate(t, d));
     let done = 0;
-    activeTasks.forEach(task => { done += taskCompletionFraction(task, dateKey); });
-    const percent = activeTasks.length > 0 ? Math.round(done / activeTasks.length * 100) : 0;
+    activeTasksToday.forEach(task => { done += taskCompletionFraction(task, dateKey); });
+    const percent = activeTasksToday.length > 0 ? Math.round(done / activeTasksToday.length * 100) : 0;
     bars.innerHTML += `<div>${dayLabels[i]}</div><div class="bar"><div class="bar-fill" style="width:${percent}%">${percent}%</div></div>`;
   }
 }
@@ -1091,9 +1108,10 @@ function calculateWeekScore() {
   }
   let done = 0, total = 0;
   for (let i = 0; i < 7; i++) {
-    const dateKey = toDateKey(addDays(currentSunday, i));
+    const d = addDays(currentSunday, i);
+    const dateKey = toDateKey(d);
     tasks.forEach(task => {
-      if ((task.days || [0,1,2,3,4,5,6]).includes(i)) {
+      if (taskAppliesOnDate(task, d)) {
         total++;
         done += taskCompletionFraction(task, dateKey);
       }
@@ -1170,7 +1188,7 @@ function adminGrantXP() {
           }).catch(e => showToast("Erro: " + e.message));
         }
       });
-      }
+    }
   });
 }
 // fim adminGrantXP
@@ -1198,6 +1216,7 @@ function reportBug() {
   });
 }
 // fim reportBug
+
 function loadBugReportsInAdmin() {
   const box = document.getElementById("bugReportsBox");
   box.innerHTML = "<p>Carregando...</p>";
@@ -1235,14 +1254,16 @@ function renderAdminScreen() {
 function copyReport() {
   let text = `${today.toLocaleDateString("pt-BR")}\n\n`;
   tasks.forEach(task => {
-    const taskDays = task.days || [0,1,2,3,4,5,6];
+    if (task.fromAgenda) return;
     let d = 0, total = 0;
     for (let i = 0; i < 7; i++) {
-      if (!taskDays.includes(i)) continue;
+      const dateObj = addDays(currentSunday, i);
+      if (!taskAppliesOnDate(task, dateObj)) continue;
       total++;
-      const dateKey = toDateKey(addDays(currentSunday, i));
+      const dateKey = toDateKey(dateObj);
       d += taskCompletionFraction(task, dateKey);
     }
+    if (total === 0) return;
     text += `${task.name}: ${Math.round(d*10)/10}/${total} (${total > 0 ? Math.round(d/total*100) : 0}%)\n`;
   });
   text += `\nXP total: ${xp}`;
@@ -1403,7 +1424,7 @@ function renderModal() {
 
   let inputHtml = "";
   if (modal.type === "text") {
-    inputHtml = `<input type="text" id="modalInput" value="${(modal.defaultValue || "").replace(/"/g,"&quot;")}">`;
+    inputHtml = `<input type="text" id="modalInput" autocomplete="off" value="${(modal.defaultValue || "").replace(/"/g,"&quot;")}">`;
   } else if (modal.type === "password") {
     inputHtml = `<input type="password" id="modalInput" placeholder="Senha">`;
   } else if (modal.type === "textarea") {
