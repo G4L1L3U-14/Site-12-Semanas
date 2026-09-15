@@ -255,8 +255,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="script.js"></script>
-<script>
-</script>
 <script src="script2.js"></script>
 <script>
 
@@ -441,8 +439,12 @@ function agendaItemAppliesOnDate(item, date) {
 // fim agendaItemAppliesOnDate
 
 function getAgendaItemsForDate(date) {
-  const source = agendaViewMode === "shared" ? sharedAgendaItems : agendaItems;
-  return source.filter(item => agendaItemAppliesOnDate(item, date));
+  if (agendaViewMode === "shared") {
+    return sharedAgendaItems.filter(item => agendaItemAppliesOnDate(item, date));
+  }
+  const lembretes = agendaItems.filter(item => agendaItemAppliesOnDate(item, date));
+  const tarefas = tasks.filter(t => t.fromAgenda && taskAppliesOnDate(t, date));
+  return [...lembretes, ...tarefas];
 }
 // fim getAgendaItemsForDate
 
@@ -511,10 +513,22 @@ function toggleAgendaItemOpen(id) {
 // fim toggleAgendaItemOpen
 
 function deleteAgendaItem(id) {
+  const taskIdx = tasks.findIndex(t => t.id === id && t.fromAgenda);
+  if (taskIdx !== -1) {
+    tasks.splice(taskIdx, 1);
+    if (editingAgendaItemId === id) { editingAgendaItemId = null; renderAgendaForm(); }
+    saveState();
+    renderAgendaCalendar();
+    renderAgendaDayItems();
+    return;
+  }
+
   if (agendaViewMode === "shared") {
     if (!sharedAgendaId) return;
+    const removed = sharedAgendaItems.find(i => i.id === id);
     sharedAgendaItems = sharedAgendaItems.filter(i => i.id !== id);
     db.collection("sharedAgendas").doc(sharedAgendaId).update({ items: sharedAgendaItems });
+    if (removed) notifySharedAgendaMembers(`${currentNickname || "Alguém"} excluiu "${removed.name}" da agenda "${sharedAgendaName}"`);
   } else {
     agendaItems = agendaItems.filter(i => i.id !== id);
     saveState();
@@ -589,49 +603,105 @@ function renderAgendaDayItems() {
   const box = document.getElementById("agendaDayItems");
   if (!box) return;
   const date = new Date(agendaSelectedDateKey + "T00:00:00");
-  const items = getAgendaItemsForDate(date);
-  const doneState = (history[agendaSelectedDateKey] && history[agendaSelectedDateKey].agenda) || {};
-  const periodsState = (history[agendaSelectedDateKey] && history[agendaSelectedDateKey].agendaPeriods) || {};
   const canEdit = agendaSelectedDateKey === todayKey;
 
   let html = `<h3 style="margin-top:0;">${date.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" })}</h3>`;
-  if (items.length === 0) {
-    html += `<p style="font-size:12px; opacity:.7;">Nada agendado pra esse dia.</p>`;
+
+  if (agendaViewMode === "shared") {
+    const items = sharedAgendaItems.filter(item => agendaItemAppliesOnDate(item, date));
+    const doneState = (history[agendaSelectedDateKey] && history[agendaSelectedDateKey].agenda) || {};
+    const periodsState = (history[agendaSelectedDateKey] && history[agendaSelectedDateKey].agendaPeriods) || {};
+
+    if (items.length === 0) {
+      html += `<p style="font-size:12px; opacity:.7;">Nada agendado pra esse dia.</p>`;
+    } else {
+      items.forEach(item => {
+        const key = agendaHistoryKey(item.id);
+        const isOpen = openAgendaItemId === item.id;
+        const actionsHtml = isOpen ? `
+          <div class="task-actions" onclick="event.stopPropagation();">
+            <button class="aura-btn" onclick="editAgendaItem('${item.id}')"><i class="fa-solid fa-pen"></i> Editar</button>
+            <button class="aura-danger" onclick="deleteAgendaItem('${item.id}')"><i class="fa-solid fa-trash"></i> Excluir</button>
+          </div>` : "";
+
+        if (item.xpEnabled) {
+          const periods = periodsState[key] || {};
+          html += `
+            <div class="task-row" onclick="toggleAgendaItemOpen('${item.id}')">
+              <span>${item.name} <span style="opacity:.6; font-size:11px;">(vale ${item.value} XP)</span></span>
+              <div class="task-days-row" onclick="event.stopPropagation();">
+                ${AGENDA_PERIODS.map(p => `
+                  <button class="day-toggle ${periods[p] ? "active" : ""}" ${canEdit ? "" : "disabled style='opacity:.4;'"} onclick="toggleAgendaPeriod('${item.id}','${p}','${agendaSelectedDateKey}')">${AGENDA_PERIOD_LABELS[p]}</button>
+                `).join("")}
+              </div>
+              ${actionsHtml}
+            </div>`;
+        } else {
+          const done = !!doneState[key];
+          html += `
+            <div class="task-row" onclick="toggleAgendaItemOpen('${item.id}')">
+              <span onclick="event.stopPropagation(); ${canEdit ? `toggleAgendaItem('${item.id}','${agendaSelectedDateKey}')` : ""}" style="cursor:${canEdit ? "pointer" : "default"};">
+                ${done ? '<i class="fa-solid fa-square-check"></i>' : '<i class="fa-regular fa-square"></i>'} ${item.name}
+              </span>
+              ${actionsHtml}
+            </div>`;
+        }
+      });
+    }
+    box.innerHTML = html;
+    return;
+  }
+
+  // ===== modo pessoal: Tarefas (marcáveis, com XP) separadas de Lembretes (só avisam) =====
+  const tarefas = tasks.filter(t => t.fromAgenda && taskAppliesOnDate(t, date));
+  const lembretes = agendaItems.filter(item => agendaItemAppliesOnDate(item, date));
+
+  html += `<h4 style="margin-bottom:6px; opacity:.85;"><i class="fa-solid fa-list-check"></i> Tarefas (marcáveis)</h4>`;
+  if (tarefas.length === 0) {
+    html += `<p style="font-size:12px; opacity:.6; margin-bottom:12px;">Nenhuma tarefa pra esse dia.</p>`;
   } else {
-    items.forEach(item => {
-      const key = agendaHistoryKey(item.id);
+    tarefas.forEach(task => {
+      const isOpen = openAgendaItemId === task.id;
+      const done = !!(history[agendaSelectedDateKey] && history[agendaSelectedDateKey][task.id]);
+      const actionsHtml = isOpen ? `
+        <div class="task-actions" onclick="event.stopPropagation();">
+          <button class="aura-btn" onclick="editAgendaItem('${task.id}')"><i class="fa-solid fa-pen"></i> Editar</button>
+          <button class="aura-danger" onclick="deleteAgendaItem('${task.id}')"><i class="fa-solid fa-trash"></i> Excluir</button>
+        </div>` : "";
+      html += `
+        <div class="task-row" onclick="toggleAgendaItemOpen('${task.id}')">
+          <span onclick="event.stopPropagation(); ${canEdit ? `toggle('${task.id}','${agendaSelectedDateKey}')` : ""}" style="cursor:${canEdit ? "pointer" : "default"};">
+            ${done ? '<i class="fa-solid fa-square-check"></i>' : '<i class="fa-regular fa-square"></i>'} ${task.name}
+          </span>
+          ${actionsHtml}
+        </div>`;
+    });
+  }
+
+  html += `<h4 style="margin:14px 0 6px 0; opacity:.85;"><i class="fa-solid fa-bell"></i> Lembretes (só avisam)</h4>`;
+  if (lembretes.length === 0) {
+    html += `<p style="font-size:12px; opacity:.6;">Nenhum lembrete pra esse dia.</p>`;
+  } else {
+    const doneState = (history[agendaSelectedDateKey] && history[agendaSelectedDateKey].agenda) || {};
+    lembretes.forEach(item => {
       const isOpen = openAgendaItemId === item.id;
+      const done = !!doneState[item.id];
       const actionsHtml = isOpen ? `
         <div class="task-actions" onclick="event.stopPropagation();">
           <button class="aura-btn" onclick="editAgendaItem('${item.id}')"><i class="fa-solid fa-pen"></i> Editar</button>
-          ${agendaViewMode === "personal" ? `<button class="aura-btn" onclick="shareAgendaItemViaChat('${item.id}')"><i class="fa-solid fa-share"></i> Compartilhar</button>` : ""}
+          <button class="aura-btn" onclick="shareAgendaItemViaChat('${item.id}')"><i class="fa-solid fa-share"></i> Compartilhar</button>
           <button class="aura-danger" onclick="deleteAgendaItem('${item.id}')"><i class="fa-solid fa-trash"></i> Excluir</button>
         </div>` : "";
-
-      if (item.xpEnabled) {
-        const periods = periodsState[key] || {};
-        html += `
-          <div class="task-row" onclick="toggleAgendaItemOpen('${item.id}')">
-            <span>${item.name} <span style="opacity:.6; font-size:11px;">(vale ${item.value} XP)</span></span>
-            <div class="task-days-row" onclick="event.stopPropagation();">
-              ${AGENDA_PERIODS.map(p => `
-                <button class="day-toggle ${periods[p] ? "active" : ""}" ${canEdit ? "" : "disabled style='opacity:.4;'"} onclick="toggleAgendaPeriod('${item.id}','${p}','${agendaSelectedDateKey}')">${AGENDA_PERIOD_LABELS[p]}</button>
-              `).join("")}
-            </div>
-            ${actionsHtml}
-          </div>`;
-      } else {
-        const done = !!doneState[key];
-        html += `
-          <div class="task-row" onclick="toggleAgendaItemOpen('${item.id}')">
-            <span onclick="event.stopPropagation(); ${canEdit ? `toggleAgendaItem('${item.id}','${agendaSelectedDateKey}')` : ""}" style="cursor:${canEdit ? "pointer" : "default"};">
-              ${done ? '<i class="fa-solid fa-square-check"></i>' : '<i class="fa-regular fa-square"></i>'} ${item.name}
-            </span>
-            ${actionsHtml}
-          </div>`;
-      }
+      html += `
+        <div class="task-row" onclick="toggleAgendaItemOpen('${item.id}')">
+          <span onclick="event.stopPropagation(); ${canEdit ? `toggleAgendaItem('${item.id}','${agendaSelectedDateKey}')` : ""}" style="cursor:${canEdit ? "pointer" : "default"};">
+            ${done ? '<i class="fa-solid fa-square-check"></i>' : '<i class="fa-regular fa-square"></i>'} ${item.name}
+          </span>
+          ${actionsHtml}
+        </div>`;
     });
   }
+
   box.innerHTML = html;
 }
 // fim renderAgendaDayItems
@@ -655,9 +725,19 @@ function updateAgendaXPFields() {
   const checkEl = document.getElementById("agendaXPEnabled");
   if (!checkEl) return;
   const box = document.getElementById("agendaXPFieldsBox");
-  box.innerHTML = checkEl.checked ? `<label>XP total ao completar (dividido entre manhã/tarde/noite)</label><input type="number" id="agendaItemXP" value="20" min="0">` : "";
+  box.innerHTML = checkEl.checked ? `<label>XP total ao completar (dividido entre manhã/tarde/noite)</label><input type="number" id="agendaItemXP" value="20" min="0" max="1000">` : "";
 }
 // fim updateAgendaXPFields
+
+function updateAgendaKindHint() {
+  const el = document.getElementById("agendaKindSelect");
+  const hint = document.getElementById("agendaKindHint");
+  if (!el || !hint) return;
+  hint.innerText = el.value === "tarefa"
+    ? "Vira uma tarefa de verdade: entra na divisão de XP do dia junto com as outras tarefas."
+    : "Só marca visualmente e te avisa com uma notificação — não mexe em XP.";
+}
+// fim updateAgendaKindHint
 
 function cancelAgendaEdit() {
   editingAgendaItemId = null;
@@ -666,6 +746,26 @@ function cancelAgendaEdit() {
 // fim cancelAgendaEdit
 
 function editAgendaItem(id) {
+  const task = tasks.find(t => t.id === id && t.fromAgenda);
+  if (task) {
+    editingAgendaItemId = id;
+    renderAgendaForm();
+    document.getElementById("agendaItemName").value = task.name;
+    if (document.getElementById("agendaKindSelect")) document.getElementById("agendaKindSelect").value = "tarefa";
+    const scheduleType = task.scheduleType || "weekly";
+    document.getElementById("agendaItemType").value = scheduleType;
+    updateAgendaTypeFields();
+    if (scheduleType === "weekly") {
+      (task.days || []).forEach(d => {
+        const btn = document.querySelector(`#agendaTypeFieldsBox .day-toggle[data-day="${d}"]`);
+        if (btn) btn.classList.add("active");
+      });
+    } else if (scheduleType === "monthly") {
+      document.getElementById("agendaMonthDayInput").value = task.monthDay;
+    }
+    return;
+  }
+
   const source = agendaViewMode === "shared" ? sharedAgendaItems : agendaItems;
   const item = source.find(i => i.id === id);
   if (!item) return;
@@ -673,6 +773,7 @@ function editAgendaItem(id) {
   renderAgendaForm();
 
   document.getElementById("agendaItemName").value = item.name;
+  if (document.getElementById("agendaKindSelect")) document.getElementById("agendaKindSelect").value = "lembrete";
   document.getElementById("agendaItemType").value = item.type;
   updateAgendaTypeFields();
   if (item.type === "weekly") {
@@ -684,58 +785,126 @@ function editAgendaItem(id) {
     document.getElementById("agendaMonthDayInput").value = item.monthDay;
   }
 
-  document.getElementById("agendaXPEnabled").checked = !!item.xpEnabled;
-  updateAgendaXPFields();
-  if (item.xpEnabled) document.getElementById("agendaItemXP").value = item.value;
+  if (agendaViewMode === "shared") {
+    document.getElementById("agendaXPEnabled").checked = !!item.xpEnabled;
+    updateAgendaXPFields();
+    if (item.xpEnabled) document.getElementById("agendaItemXP").value = item.value;
+  }
 }
 // fim editAgendaItem
 
 function addAgendaItem() {
   const name = document.getElementById("agendaItemName").value.trim();
   const type = document.getElementById("agendaItemType").value;
-  const xpEnabled = document.getElementById("agendaXPEnabled").checked;
-  const xpVal = xpEnabled ? (parseInt(document.getElementById("agendaItemXP").value) || 0) : 0;
   if (!name) { showToast("Digite um nome."); return; }
 
-  const isShared = agendaViewMode === "shared";
-  if (isShared && !sharedAgendaId) { showToast("Você não faz parte de uma agenda compartilhada."); return; }
+  // ===== modo compartilhado (sem mudança na lógica) =====
+  if (agendaViewMode === "shared") {
+    if (!sharedAgendaId) { showToast("Você não faz parte de uma agenda compartilhada."); return; }
+    const xpEnabled = document.getElementById("agendaXPEnabled").checked;
+    let xpVal = xpEnabled ? (parseInt(document.getElementById("agendaItemXP").value) || 0) : 0;
+    if (xpVal > DAILY_POOL) { showToast(`XP máximo por item é ${DAILY_POOL}.`); xpVal = DAILY_POOL; }
+    if (xpVal < 0) xpVal = 0;
 
-  const source = isShared ? sharedAgendaItems : agendaItems;
-  let item;
-  if (editingAgendaItemId) {
-    item = source.find(i => i.id === editingAgendaItemId);
-    if (!item) { editingAgendaItemId = null; return; }
-  } else {
-    item = { id: "ag" + Date.now() + Math.floor(Math.random() * 1000) };
-  }
+    let item;
+    if (editingAgendaItemId) {
+      item = sharedAgendaItems.find(i => i.id === editingAgendaItemId);
+      if (!item) { editingAgendaItemId = null; return; }
+    } else {
+      item = { id: "ag" + Date.now() + Math.floor(Math.random() * 1000) };
+    }
+    item.name = name; item.type = type; item.xpEnabled = xpEnabled; item.value = xpVal;
+    delete item.date; delete item.weekdays; delete item.monthDay;
 
-  item.name = name;
-  item.type = type;
-  item.xpEnabled = xpEnabled;
-  item.value = xpVal;
-  delete item.date; delete item.weekdays; delete item.monthDay;
+    if (type === "once") {
+      item.date = agendaSelectedDateKey;
+    } else if (type === "weekly") {
+      const buttons = document.querySelectorAll("#agendaTypeFieldsBox .day-toggle.active");
+      item.weekdays = Array.from(buttons).map(b => parseInt(b.dataset.day));
+      if (item.weekdays.length === 0) { showToast("Escolha pelo menos 1 dia da semana."); return; }
+    } else if (type === "monthly") {
+      const day = parseInt(document.getElementById("agendaMonthDayInput").value);
+      if (!day || day < 1 || day > 31) { showToast("Digite um dia do mês válido."); return; }
+      item.monthDay = day;
+    }
 
-  if (type === "once") {
-    item.date = agendaSelectedDateKey;
-  } else if (type === "weekly") {
-    const buttons = document.querySelectorAll("#agendaTypeFieldsBox .day-toggle.active");
-    item.weekdays = Array.from(buttons).map(b => parseInt(b.dataset.day));
-    if (item.weekdays.length === 0) { showToast("Escolha pelo menos 1 dia da semana."); return; }
-  } else if (type === "monthly") {
-    const day = parseInt(document.getElementById("agendaMonthDayInput").value);
-    if (!day || day < 1 || day > 31) { showToast("Digite um dia do mês válido."); return; }
-    item.monthDay = day;
-  }
-
-  if (isShared) {
-    if (!editingAgendaItemId) sharedAgendaItems.push(item);
+    const wasEditing = !!editingAgendaItemId;
+    if (!wasEditing) sharedAgendaItems.push(item);
     db.collection("sharedAgendas").doc(sharedAgendaId).update({ items: sharedAgendaItems });
+    notifySharedAgendaMembers(`${currentNickname || "Alguém"} ${wasEditing ? "editou" : "adicionou"} "${name}" na agenda "${sharedAgendaName}"`);
+
+    editingAgendaItemId = null;
+    renderAgendaForm();
+    renderAgendaCalendar();
+    renderAgendaDayItems();
+    return;
+  }
+
+  // ===== modo pessoal: Lembrete ou Tarefa =====
+  const kind = document.getElementById("agendaKindSelect").value;
+
+  if (kind === "tarefa") {
+    let extra = {};
+    if (type === "once") {
+      extra.onceDate = agendaSelectedDateKey;
+    } else if (type === "weekly") {
+      const buttons = document.querySelectorAll("#agendaTypeFieldsBox .day-toggle.active");
+      extra.weekdays = Array.from(buttons).map(b => parseInt(b.dataset.day));
+      if (extra.weekdays.length === 0) { showToast("Escolha pelo menos 1 dia da semana."); return; }
+    } else if (type === "monthly") {
+      const day = parseInt(document.getElementById("agendaMonthDayInput").value);
+      if (!day || day < 1 || day > 31) { showToast("Digite um dia do mês válido."); return; }
+      extra.monthDay = day;
+    }
+
+    if (editingAgendaItemId) {
+      const task = tasks.find(t => t.id === editingAgendaItemId);
+      if (task) {
+        task.name = name;
+        task.scheduleType = type;
+        delete task.onceDate; delete task.monthDay;
+        if (type === "once") task.onceDate = extra.onceDate;
+        else if (type === "monthly") task.monthDay = extra.monthDay;
+        else task.days = extra.weekdays;
+      }
+    } else {
+      const task = { id: "t" + Date.now() + Math.floor(Math.random() * 1000), name, linkedBlocks: [], fromAgenda: true, scheduleType: type, days: [0,1,2,3,4,5,6] };
+      if (type === "once") task.onceDate = extra.onceDate;
+      else if (type === "monthly") task.monthDay = extra.monthDay;
+      else task.days = extra.weekdays;
+      tasks.push(task);
+    }
+    saveState();
+    showToast(editingAgendaItemId ? "Tarefa atualizada!" : "Tarefa criada!");
   } else {
+    let item;
+    if (editingAgendaItemId) {
+      item = agendaItems.find(i => i.id === editingAgendaItemId);
+      if (!item) { editingAgendaItemId = null; return; }
+    } else {
+      item = { id: "ag" + Date.now() + Math.floor(Math.random() * 1000) };
+    }
+    item.name = name; item.type = type; item.xpEnabled = false; item.value = 0;
+    delete item.date; delete item.weekdays; delete item.monthDay;
+
+    if (type === "once") {
+      item.date = agendaSelectedDateKey;
+    } else if (type === "weekly") {
+      const buttons = document.querySelectorAll("#agendaTypeFieldsBox .day-toggle.active");
+      item.weekdays = Array.from(buttons).map(b => parseInt(b.dataset.day));
+      if (item.weekdays.length === 0) { showToast("Escolha pelo menos 1 dia da semana."); return; }
+    } else if (type === "monthly") {
+      const day = parseInt(document.getElementById("agendaMonthDayInput").value);
+      if (!day || day < 1 || day > 31) { showToast("Digite um dia do mês válido."); return; }
+      item.monthDay = day;
+    }
+
     if (!editingAgendaItemId) agendaItems.push(item);
     saveState();
+    showToast(editingAgendaItemId ? "Lembrete atualizado!" : "Lembrete criado!");
   }
-  editingAgendaItemId = null;
 
+  editingAgendaItemId = null;
   renderAgendaForm();
   renderAgendaCalendar();
   renderAgendaDayItems();
@@ -744,10 +913,44 @@ function addAgendaItem() {
 
 function renderAgendaForm() {
   const isEditing = !!editingAgendaItemId;
+  const isShared = agendaViewMode === "shared";
+
+  if (isShared) {
+    document.getElementById("agendaFormBody").innerHTML = `
+      <div class="admin-form">
+        <label>Nome</label>
+        <input type="text" id="agendaItemName" placeholder="Ex: Pagar conta de luz">
+        <label>Tipo</label>
+        <select id="agendaItemType" onchange="updateAgendaTypeFields()">
+          <option value="once">Só no dia selecionado</option>
+          <option value="weekly">Repete em dias da semana</option>
+          <option value="monthly">Repete todo dia X do mês</option>
+        </select>
+        <div id="agendaTypeFieldsBox"></div>
+        <label style="display:flex; align-items:center; gap:6px; margin-top:10px;">
+          <input type="checkbox" id="agendaXPEnabled" onchange="updateAgendaXPFields()">
+          Vale XP?
+        </label>
+        <div id="agendaXPFieldsBox"></div>
+        <button class="aura-btn" onclick="addAgendaItem()">${isEditing ? '<i class="fa-solid fa-check"></i> Salvar' : '<i class="fa-solid fa-plus"></i> Criar'}</button>
+        ${isEditing ? `<button class="menu-btn-small" onclick="cancelAgendaEdit()">Cancelar</button>` : ""}
+      </div>
+    `;
+    updateAgendaTypeFields();
+    updateAgendaXPFields();
+    return;
+  }
+
   document.getElementById("agendaFormBody").innerHTML = `
     <div class="admin-form">
       <label>Nome</label>
-      <input type="text" id="agendaItemName" placeholder="Ex: Pagar conta de luz">
+      <input type="text" id="agendaItemName" placeholder="Ex: Ir ao dentista">
+      <label>O que é isso?</label>
+      <select id="agendaKindSelect" onchange="updateAgendaKindHint()" ${isEditing ? "disabled" : ""}>
+        <option value="lembrete">Lembrete (só pra lembrar, sem XP)</option>
+        <option value="tarefa">Tarefa (marcável, vale XP igual às outras)</option>
+      </select>
+      <p id="agendaKindHint" style="font-size:11px; opacity:.7; margin-top:2px;"></p>
       <label>Tipo</label>
       <select id="agendaItemType" onchange="updateAgendaTypeFields()">
         <option value="once">Só no dia selecionado</option>
@@ -755,17 +958,12 @@ function renderAgendaForm() {
         <option value="monthly">Repete todo dia X do mês</option>
       </select>
       <div id="agendaTypeFieldsBox"></div>
-      <label style="display:flex; align-items:center; gap:6px; margin-top:10px;">
-        <input type="checkbox" id="agendaXPEnabled" onchange="updateAgendaXPFields()" style="width:auto;">
-        Vale XP?
-      </label>
-      <div id="agendaXPFieldsBox"></div>
       <button class="aura-btn" onclick="addAgendaItem()">${isEditing ? '<i class="fa-solid fa-check"></i> Salvar' : '<i class="fa-solid fa-plus"></i> Criar'}</button>
       ${isEditing ? `<button class="menu-btn-small" onclick="cancelAgendaEdit()">Cancelar</button>` : ""}
     </div>
   `;
   updateAgendaTypeFields();
-  updateAgendaXPFields();
+  updateAgendaKindHint();
 }
 // fim renderAgendaForm
 
@@ -857,8 +1055,10 @@ function leaveSharedAgenda() {
     onConfirm: () => {
       const idToClear = sharedAgendaId;
       if (isCreator) {
+        notifySharedAgendaMembers(`${currentNickname || "Alguém"} excluiu a agenda compartilhada "${sharedAgendaName}".`);
         db.collection("sharedAgendas").doc(idToClear).delete();
       } else {
+        notifySharedAgendaMembers(`${currentNickname || "Alguém"} saiu da agenda compartilhada "${sharedAgendaName}".`);
         db.collection("sharedAgendas").doc(idToClear).update({
           members: firebase.firestore.FieldValue.arrayRemove(currentUser.uid)
         });
@@ -878,6 +1078,9 @@ function leaveSharedAgenda() {
 
 function removeMemberFromSharedAgenda(uid) {
   if (!sharedAgendaId || sharedAgendaCreatedBy !== currentUser.uid) return;
+  const removedName = sharedAgendaMemberNames[uid] || "Alguém";
+  createNotification(uid, "shared_agenda_removed", "Agenda Compartilhada", `Você foi removido da agenda "${sharedAgendaName}".`);
+  notifySharedAgendaMembers(`${removedName} foi removido da agenda "${sharedAgendaName}" por ${currentNickname || "o criador"}.`, uid);
   db.collection("sharedAgendas").doc(sharedAgendaId).update({
     members: firebase.firestore.FieldValue.arrayRemove(uid)
   }).then(() => {
@@ -885,6 +1088,26 @@ function removeMemberFromSharedAgenda(uid) {
   });
 }
 // fim removeMemberFromSharedAgenda
+
+function checkTodayAgendaReminders() {
+  if (!currentUser) return;
+  const todayItems = agendaItems.filter(item => agendaItemAppliesOnDate(item, today));
+  if (todayItems.length === 0) return;
+
+  if (!history[todayKey]) history[todayKey] = {};
+  if (!history[todayKey].agendaRemindersSent) history[todayKey].agendaRemindersSent = {};
+
+  let sentAny = false;
+  todayItems.forEach(item => {
+    if (history[todayKey].agendaRemindersSent[item.id]) return;
+    createNotification(currentUser.uid, "agenda_reminder", "Lembrete de hoje", item.name);
+    history[todayKey].agendaRemindersSent[item.id] = true;
+    sentAny = true;
+  });
+
+  if (sentAny) saveState();
+}
+// fim checkTodayAgendaReminders
 
 function listenToSharedAgenda() {
   if (!currentUser) return;
@@ -1119,6 +1342,7 @@ function refreshForUser() {
   refreshNotifBadge();
   checkBanStatus();
   listenToSharedAgenda();
+  checkTodayAgendaReminders();
 }
 // fim refreshForUser
 
