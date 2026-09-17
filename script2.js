@@ -524,6 +524,7 @@ function acceptSharedMessage(messageId) {
   if (m.shareType === "checklist") acceptSharedChecklist(m.sharePayload);
   else if (m.shareType === "agenda") acceptSharedAgenda(m.sharePayload);
   else if (m.shareType === "sharedAgendaInvite") acceptSharedAgendaInvite(m.sharePayload);
+  else if (m.shareType === "note") acceptSharedNote(m.sharePayload);
 }
 // fim acceptSharedMessage
 
@@ -846,3 +847,268 @@ function renderTodaySubtasks() {
   box.innerHTML = html;
 }
 // fim renderTodaySubtasks
+
+// ===== TREINO (Sessão, Evolução, Peso) =====
+let trainingViewMode = "sessao";
+let openSessionId = null;
+
+function switchTrainingMode(mode) {
+  trainingViewMode = mode;
+  openSessionId = null;
+  renderTrainingTabs();
+  renderTrainingContent();
+}
+// fim switchTrainingMode
+
+function renderTrainingTabs() {
+  const box = document.getElementById("trainingModeTabs");
+  if (!box) return;
+  const modes = [["sessao", "Sessão", "fa-dumbbell"], ["evolucao", "Evolução", "fa-chart-line"], ["peso", "Peso", "fa-weight-scale"]];
+  box.innerHTML = modes.map(([m, label, icon]) => `
+    <button class="menu-btn-small" style="${trainingViewMode === m ? "opacity:1;" : "opacity:.5;"}" onclick="switchTrainingMode('${m}')"><i class="fa-solid ${icon}"></i> ${label}</button>
+  `).join("");
+}
+// fim renderTrainingTabs
+
+function renderTrainingContent() {
+  if (trainingViewMode === "sessao") renderTrainingSessao();
+  else if (trainingViewMode === "evolucao") renderTrainingEvolucao();
+  else renderTrainingPeso();
+}
+// fim renderTrainingContent
+
+function loadTrainingScreen() {
+  trainingViewMode = "sessao";
+  openSessionId = null;
+  renderTrainingTabs();
+  renderTrainingContent();
+}
+// fim loadTrainingScreen
+
+// ----- Sessão -----
+function addWorkoutSession() {
+  const date = document.getElementById("newSessionDate").value || todayKey;
+  const split = document.getElementById("newSessionSplit").value.trim();
+  const duration = parseInt(document.getElementById("newSessionDuration").value) || 0;
+
+  workoutSessions.push({ id: "ws" + Date.now() + Math.floor(Math.random() * 1000), date, split, duration, exercises: [] });
+  saveState();
+  renderTrainingSessao();
+}
+// fim addWorkoutSession
+
+function deleteWorkoutSession(id) {
+  openModal({
+    title: "Excluir essa sessão de treino inteira?",
+    type: "confirm",
+    confirmLabel: "Excluir",
+    onConfirm: () => {
+      workoutSessions = workoutSessions.filter(s => s.id !== id);
+      if (openSessionId === id) openSessionId = null;
+      saveState();
+      renderTrainingSessao();
+    }
+  });
+}
+// fim deleteWorkoutSession
+
+function toggleSessionOpen(id) {
+  openSessionId = (openSessionId === id) ? null : id;
+  renderTrainingSessao();
+}
+// fim toggleSessionOpen
+
+function addExerciseToSession(sessionId) {
+  const session = workoutSessions.find(s => s.id === sessionId);
+  if (!session) return;
+  const nameInput = document.getElementById(`exName_${sessionId}`);
+  const weightInput = document.getElementById(`exWeight_${sessionId}`);
+  const repsInput = document.getElementById(`exReps_${sessionId}`);
+  const setsInput = document.getElementById(`exSets_${sessionId}`);
+
+  const name = nameInput.value.trim();
+  const weight = weightInput.value.trim() === "" ? null : parseFloat(weightInput.value);
+  const reps = parseInt(repsInput.value) || 0;
+  const sets = parseInt(setsInput.value) || 0;
+  if (!name || reps <= 0 || sets <= 0) { showToast("Preenche nome, reps e séries."); return; }
+
+  const volume = weight !== null ? Math.round(weight * reps * sets * 10) / 10 : reps * sets;
+  session.exercises.push({ id: "ex" + Date.now() + Math.floor(Math.random() * 1000), name, weight, reps, sets, volume });
+
+  nameInput.value = ""; weightInput.value = ""; repsInput.value = ""; setsInput.value = "";
+  saveState();
+  renderTrainingSessao();
+}
+// fim addExerciseToSession
+
+function deleteExerciseFromSession(sessionId, exId) {
+  const session = workoutSessions.find(s => s.id === sessionId);
+  if (!session) return;
+  session.exercises = session.exercises.filter(e => e.id !== exId);
+  saveState();
+  renderTrainingSessao();
+}
+// fim deleteExerciseFromSession
+
+function renderTrainingSessao() {
+  const box = document.getElementById("trainingContent");
+  const sorted = [...workoutSessions].sort((a, b) => b.date.localeCompare(a.date));
+
+  let html = `
+    <div class="task-manager">
+      <h3 style="margin-top:0;">Nova sessão</h3>
+      <div class="admin-form">
+        <label>Data</label>
+        <input type="date" id="newSessionDate" value="${todayKey}">
+        <label>Divisão de treino (ex: Treino A, Push)</label>
+        <input type="text" id="newSessionSplit" placeholder="Ex: Treino A">
+        <label>Duração (minutos)</label>
+        <input type="number" id="newSessionDuration" min="0" placeholder="Ex: 60">
+        <button class="aura-btn" onclick="addWorkoutSession()"><i class="fa-solid fa-plus"></i> Criar sessão</button>
+      </div>
+    </div>
+  `;
+
+  if (sorted.length === 0) {
+    html += `<p style="font-size:12px; opacity:.7;">Nenhuma sessão registrada ainda.</p>`;
+  } else {
+    sorted.forEach(session => {
+      const isOpen = openSessionId === session.id;
+      const totalVolume = session.exercises.reduce((sum, e) => sum + (e.volume || 0), 0);
+      html += `
+        <div class="task-manager">
+          <div class="task-row" onclick="toggleSessionOpen('${session.id}')">
+            <strong>${session.date}${session.split ? " — " + session.split : ""}</strong>
+            <span style="font-size:11px; opacity:.7; margin-left:6px;">${session.duration ? session.duration + "min · " : ""}${session.exercises.length} exercício(s) · Volume: ${totalVolume}</span>
+          </div>
+          ${isOpen ? `
+            <div style="margin-top:10px;">
+              ${session.exercises.map(ex => `
+                <div class="friend-row">
+                  <span>${ex.name} — ${ex.weight !== null ? ex.weight + "kg x " : ""}${ex.reps}reps x ${ex.sets}séries ${ex.weight !== null ? "(vol: " + ex.volume + ")" : "(" + ex.volume + " reps totais)"}</span>
+                  <button class="menu-btn-small menu-btn-danger" onclick="deleteExerciseFromSession('${session.id}','${ex.id}')"><i class="fa-solid fa-trash"></i></button>
+                </div>
+              `).join("")}
+              <div class="admin-form" style="margin-top:10px;">
+                <label>Novo exercício</label>
+                <input type="text" id="exName_${session.id}" placeholder="Nome do exercício">
+                <label>Peso (kg) — deixe vazio se for calistenia</label>
+                <input type="number" id="exWeight_${session.id}" step="0.5" placeholder="Ex: 40 (opcional)">
+                <label>Repetições</label>
+                <input type="number" id="exReps_${session.id}" placeholder="Ex: 10">
+                <label>Séries</label>
+                <input type="number" id="exSets_${session.id}" placeholder="Ex: 3">
+                <button class="aura-btn" onclick="addExerciseToSession('${session.id}')"><i class="fa-solid fa-plus"></i> Adicionar exercício</button>
+              </div>
+              <button class="aura-danger" style="margin-top:10px;" onclick="deleteWorkoutSession('${session.id}')"><i class="fa-solid fa-trash"></i> Excluir sessão</button>
+            </div>` : ""}
+        </div>`;
+    });
+  }
+
+  box.innerHTML = html;
+}
+// fim renderTrainingSessao
+
+// ----- Evolução -----
+function computePersonalRecords() {
+  const records = {};
+  workoutSessions.forEach(session => {
+    session.exercises.forEach(ex => {
+      if (ex.weight === null) return;
+      if (!records[ex.name] || ex.weight > records[ex.name].weight) {
+        records[ex.name] = { weight: ex.weight, reps: ex.reps, sets: ex.sets, date: session.date };
+      }
+    });
+  });
+  return records;
+}
+// fim computePersonalRecords
+
+function renderTrainingEvolucao() {
+  const box = document.getElementById("trainingContent");
+  const records = computePersonalRecords();
+  const recordNames = Object.keys(records);
+
+  let html = `<div class="task-manager"><h3 style="margin-top:0;"><i class="fa-solid fa-trophy"></i> Recordes Pessoais</h3>`;
+  if (recordNames.length === 0) {
+    html += `<p style="font-size:12px; opacity:.7;">Nenhum recorde ainda — registre exercícios com peso na aba Sessão.</p>`;
+  } else {
+    recordNames.forEach(name => {
+      const r = records[name];
+      html += `<div class="friend-row"><span>${name}</span><span>${r.weight}kg x ${r.reps} (${r.date})</span></div>`;
+    });
+  }
+  html += `</div>`;
+
+  const sorted = [...workoutSessions].sort((a, b) => b.date.localeCompare(a.date));
+  html += `<div class="task-manager"><h3 style="margin-top:0;"><i class="fa-solid fa-chart-column"></i> Volume por Sessão</h3>`;
+  if (sorted.length === 0) {
+    html += `<p style="font-size:12px; opacity:.7;">Nenhuma sessão registrada ainda.</p>`;
+  } else {
+    sorted.slice(0, 15).forEach(session => {
+      const totalVolume = session.exercises.reduce((sum, e) => sum + (e.volume || 0), 0);
+      html += `<div class="friend-row"><span>${session.date}${session.split ? " — " + session.split : ""}</span><span>${totalVolume}</span></div>`;
+    });
+  }
+  html += `</div>`;
+
+  box.innerHTML = html;
+}
+// fim renderTrainingEvolucao
+
+// ----- Peso -----
+function addBodyWeightEntry() {
+  const date = document.getElementById("newWeightDate").value || todayKey;
+  const weight = parseFloat(document.getElementById("newWeightValue").value);
+  if (!weight) { showToast("Digite um peso válido."); return; }
+
+  bodyWeightLog.push({ id: "bw" + Date.now() + Math.floor(Math.random() * 1000), date, weight });
+  document.getElementById("newWeightValue").value = "";
+  saveState();
+  renderTrainingPeso();
+}
+// fim addBodyWeightEntry
+
+function deleteBodyWeightEntry(id) {
+  bodyWeightLog = bodyWeightLog.filter(e => e.id !== id);
+  saveState();
+  renderTrainingPeso();
+}
+// fim deleteBodyWeightEntry
+
+function renderTrainingPeso() {
+  const box = document.getElementById("trainingContent");
+  const sorted = [...bodyWeightLog].sort((a, b) => b.date.localeCompare(a.date));
+
+  let html = `
+    <div class="task-manager">
+      <h3 style="margin-top:0;">Registrar peso</h3>
+      <div class="admin-form">
+        <label>Data</label>
+        <input type="date" id="newWeightDate" value="${todayKey}">
+        <label>Peso (kg)</label>
+        <input type="number" id="newWeightValue" step="0.1" placeholder="Ex: 78.5">
+        <button class="aura-btn" onclick="addBodyWeightEntry()"><i class="fa-solid fa-plus"></i> Registrar</button>
+      </div>
+    </div>
+  `;
+
+  if (sorted.length >= 2) {
+    const delta = Math.round((sorted[0].weight - sorted[sorted.length - 1].weight) * 10) / 10;
+    html += `<div class="task-manager"><p style="font-size:13px;">Variação desde o primeiro registro: <strong>${delta > 0 ? "+" : ""}${delta}kg</strong></p></div>`;
+  }
+
+  html += `<div class="task-manager"><h3 style="margin-top:0;">Histórico</h3>`;
+  if (sorted.length === 0) {
+    html += `<p style="font-size:12px; opacity:.7;">Nenhum registro ainda.</p>`;
+  } else {
+    sorted.forEach(entry => {
+      html += `<div class="friend-row"><span>${entry.date}</span><span>${entry.weight}kg <button class="menu-btn-small menu-btn-danger" onclick="deleteBodyWeightEntry('${entry.id}')"><i class="fa-solid fa-trash"></i></button></span></div>`;
+    });
+  }
+  html += `</div>`;
+
+  box.innerHTML = html;
+}
+// fim renderTrainingPeso
