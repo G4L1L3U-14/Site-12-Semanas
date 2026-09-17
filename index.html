@@ -190,6 +190,26 @@
   </div>
 </div>
 
+<div id="screenNotes" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
+    <h2><i class="fa-solid fa-note-sticky"></i> Anotações</h2>
+    <div id="notesBreadcrumb" style="font-size:12px; opacity:.8; margin-bottom:10px;"></div>
+    <div class="task-manager" id="notesListBody"></div>
+    <div class="task-manager" id="notesCreateBody"></div>
+    <div id="noteEditorBox"></div>
+  </div>
+</div>
+
+<div id="screenTraining" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="showScreen('home')">← Voltar</button>
+    <h2><i class="fa-solid fa-dumbbell"></i> Treino</h2>
+    <div id="trainingModeTabs" style="display:flex; gap:8px; margin-bottom:10px;"></div>
+    <div id="trainingContent"></div>
+  </div>
+</div>
+
 <div id="screenChat" class="screen hidden">
   <div class="container">
     <button class="back-btn" onclick="showScreen('friends')">← Voltar</button>
@@ -1218,6 +1238,248 @@ function acceptSharedAgendaInvite(payload) {
 }
 // fim acceptSharedAgendaInvite
 
+// ===== ANOTAÇÕES (pastas recursivas, tipo Drive) =====
+let notesCurrentPath = [];
+let openNoteId = null;
+
+function getNotesFolder(path) {
+  let level = notesTree;
+  let node = null;
+  for (const id of path) {
+    node = level.find(n => n.id === id && n.kind === "block");
+    if (!node) return { children: notesTree, node: null };
+    level = node.children;
+  }
+  return { children: level, node };
+}
+// fim getNotesFolder
+
+function getCurrentNotesChildren() {
+  return getNotesFolder(notesCurrentPath).children;
+}
+// fim getCurrentNotesChildren
+
+function createNoteNode(kind, name) {
+  const id = (kind === "block" ? "nb" : "nt") + Date.now() + Math.floor(Math.random() * 1000);
+  const node = { id, kind, name };
+  if (kind === "block") node.children = [];
+  else node.content = "";
+  return node;
+}
+// fim createNoteNode
+
+function addNotesBlock() {
+  const input = document.getElementById("newNotesBlockInput");
+  const name = input.value.trim();
+  if (!name) return;
+  getCurrentNotesChildren().push(createNoteNode("block", name));
+  input.value = "";
+  saveState();
+  renderNotesScreen();
+}
+// fim addNotesBlock
+
+function addNoteItem() {
+  const input = document.getElementById("newNoteInput");
+  const name = input.value.trim();
+  if (!name) return;
+  getCurrentNotesChildren().push(createNoteNode("note", name));
+  input.value = "";
+  saveState();
+  renderNotesScreen();
+}
+// fim addNoteItem
+
+function openNotesFolder(id) {
+  notesCurrentPath.push(id);
+  openNoteId = null;
+  renderNotesScreen();
+}
+// fim openNotesFolder
+
+function goToNotesRoot() {
+  notesCurrentPath = [];
+  openNoteId = null;
+  renderNotesScreen();
+}
+// fim goToNotesRoot
+
+function goToNotesBreadcrumb(index) {
+  notesCurrentPath = notesCurrentPath.slice(0, index + 1);
+  openNoteId = null;
+  renderNotesScreen();
+}
+// fim goToNotesBreadcrumb
+
+function deleteNoteNode(id) {
+  openModal({
+    title: "Excluir isso? Se for uma pasta, tudo dentro dela some junto.",
+    type: "confirm",
+    confirmLabel: "Excluir",
+    onConfirm: () => {
+      const children = getCurrentNotesChildren();
+      const idx = children.findIndex(n => n.id === id);
+      if (idx !== -1) children.splice(idx, 1);
+      if (openNoteId === id) openNoteId = null;
+      saveState();
+      renderNotesScreen();
+    }
+  });
+}
+// fim deleteNoteNode
+
+function openNoteEditor(id) {
+  openNoteId = id;
+  renderNotesScreen();
+}
+// fim openNoteEditor
+
+function closeNoteEditor() {
+  openNoteId = null;
+  renderNotesScreen();
+}
+// fim closeNoteEditor
+
+function renameNoteNode(id) {
+  const children = getCurrentNotesChildren();
+  const node = children.find(n => n.id === id);
+  if (!node) return;
+  openModal({
+    title: "Novo nome:",
+    type: "text",
+    defaultValue: node.name,
+    confirmLabel: "Salvar",
+    onConfirm: (val) => {
+      const name = (val || "").trim();
+      if (!name) return;
+      node.name = name;
+      saveState();
+      renderNotesScreen();
+    }
+  });
+}
+// fim renameNoteNode
+
+function saveNoteContent() {
+  if (!openNoteId) return;
+  const children = getCurrentNotesChildren();
+  const node = children.find(n => n.id === openNoteId);
+  if (!node) return;
+  node.content = document.getElementById("noteContentInput").value;
+  saveState();
+  showToast("Anotação salva!");
+}
+// fim saveNoteContent
+
+function regenerateNoteIds(node) {
+  const copy = { ...node, id: (node.kind === "block" ? "nb" : "nt") + Date.now() + Math.floor(Math.random() * 100000) };
+  if (node.kind === "block") copy.children = (node.children || []).map(regenerateNoteIds);
+  return copy;
+}
+// fim regenerateNoteIds
+
+function acceptSharedNote(payload) {
+  notesTree.push(regenerateNoteIds(payload));
+  saveState();
+  showToast("Adicionado nas suas Anotações!");
+}
+// fim acceptSharedNote
+
+function shareNoteViaChat(id) {
+  const children = getCurrentNotesChildren();
+  const node = children.find(n => n.id === id);
+  if (!node) return;
+  openModal({
+    title: "Nickname de quem vai receber:",
+    type: "text",
+    confirmLabel: "Enviar",
+    onConfirm: (nick) => {
+      const target = (nick || "").trim();
+      if (!target) return;
+      db.collection("users").where("nicknameLower", "==", target.toLowerCase()).limit(1).get().then(snap => {
+        if (snap.empty) { showToast("Nickname não encontrado."); return; }
+        const toUid = snap.docs[0].id;
+        const chatId = getChatId(toUid);
+        const payload = JSON.parse(JSON.stringify(node));
+        const text = `Compartilhou ${node.kind === "block" ? "uma pasta" : "uma anotação"}: "${node.name}"`;
+        db.collection("chats").doc(chatId).collection("messages").add({
+          fromUid: currentUser.uid, text, shareType: "note", sharePayload: payload, createdAt: Date.now()
+        });
+        db.collection("chats").doc(chatId).set({
+          participants: [currentUser.uid, toUid], lastMessage: text, lastMessageAt: Date.now(),
+          lastMessageFrom: currentUser.uid, lastReadBy: { [currentUser.uid]: Date.now() }
+        }, { merge: true });
+        showToast(`Enviado pra ${target}!`);
+      });
+    }
+  });
+}
+// fim shareNoteViaChat
+
+function renderNotesScreen() {
+  const { children } = getNotesFolder(notesCurrentPath);
+
+  let crumbHtml = `<span style="cursor:pointer; text-decoration:underline;" onclick="goToNotesRoot()">Anotações</span>`;
+  let level = notesTree;
+  notesCurrentPath.forEach((id, i) => {
+    const node = level.find(n => n.id === id);
+    crumbHtml += ` / <span style="cursor:pointer; text-decoration:underline;" onclick="goToNotesBreadcrumb(${i})">${node ? node.name : "?"}</span>`;
+    if (node) level = node.children;
+  });
+  document.getElementById("notesBreadcrumb").innerHTML = crumbHtml;
+
+  const list = document.getElementById("notesListBody");
+  if (children.length === 0) {
+    list.innerHTML = `<p style="font-size:12px; opacity:.7;">Vazio. Crie uma pasta ou anotação abaixo.</p>`;
+  } else {
+    list.innerHTML = children.map(node => `
+      <div class="task-row" onclick="${node.kind === "block" ? `openNotesFolder('${node.id}')` : `openNoteEditor('${node.id}')`}">
+        <i class="fa-solid ${node.kind === "block" ? "fa-folder" : "fa-note-sticky"}"></i> ${node.name}
+        <div class="task-actions" onclick="event.stopPropagation();">
+          <button class="aura-btn" onclick="renameNoteNode('${node.id}')"><i class="fa-solid fa-pen"></i> Renomear</button>
+          <button class="aura-btn" onclick="shareNoteViaChat('${node.id}')"><i class="fa-solid fa-share"></i> Compartilhar</button>
+          <button class="aura-danger" onclick="deleteNoteNode('${node.id}')"><i class="fa-solid fa-trash"></i> Excluir</button>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  document.getElementById("notesCreateBody").innerHTML = `
+    <div class="admin-form">
+      <input type="text" id="newNotesBlockInput" placeholder="Nome da pasta">
+      <button class="aura-btn" onclick="addNotesBlock()"><i class="fa-solid fa-folder-plus"></i> Criar pasta</button>
+      <input type="text" id="newNoteInput" placeholder="Título da anotação" style="margin-top:10px;">
+      <button class="aura-btn" onclick="addNoteItem()"><i class="fa-solid fa-note-sticky"></i> Criar anotação</button>
+    </div>
+  `;
+
+  const editorBox = document.getElementById("noteEditorBox");
+  if (openNoteId) {
+    const node = children.find(n => n.id === openNoteId);
+    if (node && node.kind === "note") {
+      editorBox.innerHTML = `
+        <div class="task-manager">
+          <h3 style="margin-top:0;">${node.name}</h3>
+          <textarea id="noteContentInput" rows="8" style="width:100%; box-sizing:border-box; padding:10px; border-radius:10px; border:1px solid rgba(46,204,113,0.4); background:rgba(0,0,0,0.5); color:#eaffea; font-family:inherit;">${node.content || ""}</textarea>
+          <button class="aura-btn" onclick="saveNoteContent()"><i class="fa-solid fa-check"></i> Salvar</button>
+          <button class="menu-btn-small" onclick="closeNoteEditor()">Fechar</button>
+        </div>`;
+    } else {
+      editorBox.innerHTML = "";
+    }
+  } else {
+    editorBox.innerHTML = "";
+  }
+}
+// fim renderNotesScreen
+
+function loadNotesScreen() {
+  notesCurrentPath = [];
+  openNoteId = null;
+  renderNotesScreen();
+}
+// fim loadNotesScreen
+
 // ===== INIT =====
 loadStateForCurrentUser();
 renderQuote();
@@ -1358,6 +1620,9 @@ function pullTasksFromCloud() {
       pendingTasks = migratedPending.tasks.map(t => ({ ...t, days: (t.days && t.days.length) ? t.days : [0,1,2,3,4,5,6] }));
       history = cloud.history || {};
       checklists = cloud.checklists || [];
+      notesTree = cloud.notesTree || [];
+      workoutSessions = cloud.workoutSessions || [];
+      bodyWeightLog = cloud.bodyWeightLog || [];
       agendaItems = cloud.agendaItems || [];
       weekStart = cloud.weekStart || currentSundayKey;
 
@@ -1379,7 +1644,7 @@ function pullTasksFromCloud() {
 function syncTasksToFirestore() {
   if (!currentUser) return;
   db.collection("users").doc(currentUser.uid).set({
-    sync: { tasks, pendingTasks, history, weekStart, subtaskBlocks, checklists, agendaItems }
+    sync: { tasks, pendingTasks, history, weekStart, subtaskBlocks, checklists, agendaItems, notesTree, workoutSessions, bodyWeightLog }
   }, { merge: true }).catch(() => {});
 }
 // fim syncTasksToFirestore
