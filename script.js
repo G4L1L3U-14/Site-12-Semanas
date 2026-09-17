@@ -139,7 +139,7 @@ const SCREEN_IDS = {
   ranking: "screenRanking", hallOfFame: "screenHallOfFame",
   duel: "screenDuel", friends: "screenFriends", admin: "screenAdmin",
   help: "screenHelp", notifications: "screenNotifications", settings: "screenSettings",
-  checklist: "screenChecklist", chat: "screenChat", agenda: "screenAgenda"
+  checklist: "screenChecklist", chat: "screenChat", agenda: "screenAgenda", notes: "screenNotes", training: "screenTraining"
 };
 
 function showScreen(name) {
@@ -158,6 +158,8 @@ function showScreen(name) {
   if (name === "stats") { buildBars(); calculateWeekScore(); renderPastWeekTabs(); }
   if (name === "notifications") loadNotificationsScreen();
   if (name === "checklist") loadChecklistScreen();
+  if (name === "notes") loadNotesScreen();
+  if (name === "training") loadTrainingScreen();
   if (name === "agenda") loadAgendaScreen();
 }
 // fim showScreen
@@ -291,6 +293,9 @@ let taskManagerTab = "tasks";
 let openLinkTaskId = null;
 let openSubtaskBlockId = null;
 let checklists = [];
+let notesTree = [];
+let workoutSessions = [];
+let bodyWeightLog = [];
 let agendaItems = [];
 let openChecklistId = null;
 let currentChatId = null;
@@ -322,6 +327,9 @@ function loadStateForCurrentUser() {
   lastRank = localStorage.getItem(`wt_lastRank_${currentUid}`);
   subtaskBlocks = JSON.parse(localStorage.getItem(`wt_subtaskBlocks_${currentUid}`)) || [];
   checklists = JSON.parse(localStorage.getItem(`wt_checklists_${currentUid}`)) || [];
+  notesTree = JSON.parse(localStorage.getItem(`wt_notesTree_${currentUid}`)) || [];
+  workoutSessions = JSON.parse(localStorage.getItem(`wt_workoutSessions_${currentUid}`)) || [];
+  bodyWeightLog = JSON.parse(localStorage.getItem(`wt_bodyWeightLog_${currentUid}`)) || [];
   agendaItems = JSON.parse(localStorage.getItem(`wt_agendaItems_${currentUid}`)) || [];
   openTaskId = null;
   adminDayMode = false;
@@ -355,6 +363,9 @@ function saveLocalOnly() {
   localStorage.setItem(`wt_weekStart_${currentUid}`, weekStart);
   localStorage.setItem(`wt_subtaskBlocks_${currentUid}`, JSON.stringify(subtaskBlocks));
   localStorage.setItem(`wt_checklists_${currentUid}`, JSON.stringify(checklists));
+  localStorage.setItem(`wt_notesTree_${currentUid}`, JSON.stringify(notesTree));
+  localStorage.setItem(`wt_workoutSessions_${currentUid}`, JSON.stringify(workoutSessions));
+  localStorage.setItem(`wt_bodyWeightLog_${currentUid}`, JSON.stringify(bodyWeightLog));
   localStorage.setItem(`wt_agendaItems_${currentUid}`, JSON.stringify(agendaItems));
 }
 // fim saveLocalOnly
@@ -1475,6 +1486,8 @@ function renderAuth() {
     html += `<button class="menu-btn" onclick="showScreen('duel')"><i class="fa-solid fa-hand-fist"></i> Duelo</button>`;
     html += `<button class="menu-btn" onclick="showScreen('friends')"><i class="fa-solid fa-user-group"></i> Amigos</button>`;
     html += `<button class="menu-btn" onclick="showScreen('checklist')"><i class="fa-solid fa-list-check"></i> Checklist</button>`;
+    html += `<button class="menu-btn" onclick="showScreen('notes')"><i class="fa-solid fa-note-sticky"></i> Anotações</button>`;
+    html += `<button class="menu-btn" onclick="showScreen('training')"><i class="fa-solid fa-dumbbell"></i> Treino</button>`;
     html += `<button class="menu-btn" onclick="showScreen('agenda')"><i class="fa-solid fa-calendar-days"></i> Agenda</button>`;
     if (isAdmin()) {
       html += `<button class="menu-btn menu-btn-adm" onclick="showScreen('admin')"><i class="fa-solid fa-gear"></i> Painel ADM</button>`;
