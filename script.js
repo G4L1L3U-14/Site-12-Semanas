@@ -139,7 +139,7 @@ const SCREEN_IDS = {
   ranking: "screenRanking", hallOfFame: "screenHallOfFame",
   duel: "screenDuel", friends: "screenFriends", admin: "screenAdmin",
   help: "screenHelp", notifications: "screenNotifications", settings: "screenSettings",
-  checklist: "screenChecklist", chat: "screenChat", agenda: "screenAgenda", notes: "screenNotes", training: "screenTraining"
+  checklist: "screenChecklist", chat: "screenChat", agenda: "screenAgenda", notes: "screenNotes", training: "screenTraining", noteEditor: "screenNoteEditor"
 };
 
 function showScreen(name) {
@@ -159,6 +159,7 @@ function showScreen(name) {
   if (name === "notifications") loadNotificationsScreen();
   if (name === "checklist") loadChecklistScreen();
   if (name === "notes") loadNotesScreen();
+  if (name === "noteEditor") loadNoteEditorScreen();
   if (name === "training") loadTrainingScreen();
   if (name === "agenda") loadAgendaScreen();
 }
@@ -330,6 +331,7 @@ function loadStateForCurrentUser() {
   notesTree = JSON.parse(localStorage.getItem(`wt_notesTree_${currentUid}`)) || [];
   workoutSessions = JSON.parse(localStorage.getItem(`wt_workoutSessions_${currentUid}`)) || [];
   bodyWeightLog = JSON.parse(localStorage.getItem(`wt_bodyWeightLog_${currentUid}`)) || [];
+  trainingWeekdaySplits = JSON.parse(localStorage.getItem(`wt_trainingWeekdaySplits_${currentUid}`)) || {};
   agendaItems = JSON.parse(localStorage.getItem(`wt_agendaItems_${currentUid}`)) || [];
   openTaskId = null;
   adminDayMode = false;
@@ -366,6 +368,7 @@ function saveLocalOnly() {
   localStorage.setItem(`wt_notesTree_${currentUid}`, JSON.stringify(notesTree));
   localStorage.setItem(`wt_workoutSessions_${currentUid}`, JSON.stringify(workoutSessions));
   localStorage.setItem(`wt_bodyWeightLog_${currentUid}`, JSON.stringify(bodyWeightLog));
+  localStorage.setItem(`wt_trainingWeekdaySplits_${currentUid}`, JSON.stringify(trainingWeekdaySplits));
   localStorage.setItem(`wt_agendaItems_${currentUid}`, JSON.stringify(agendaItems));
 }
 // fim saveLocalOnly
