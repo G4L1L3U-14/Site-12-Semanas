@@ -863,7 +863,7 @@ function switchTrainingMode(mode) {
 function renderTrainingTabs() {
   const box = document.getElementById("trainingModeTabs");
   if (!box) return;
-  const modes = [["sessao", "Sessão", "fa-dumbbell"], ["evolucao", "Evolução", "fa-chart-line"], ["peso", "Peso", "fa-weight-scale"]];
+  const modes = [["calendario", "Calendário", "fa-calendar-days"], ["sessao", "Sessão", "fa-dumbbell"], ["evolucao", "Evolução", "fa-chart-line"], ["peso", "Peso", "fa-weight-scale"]];
   box.innerHTML = modes.map(([m, label, icon]) => `
     <button class="menu-btn-small" style="${trainingViewMode === m ? "opacity:1;" : "opacity:.5;"}" onclick="switchTrainingMode('${m}')"><i class="fa-solid ${icon}"></i> ${label}</button>
   `).join("");
@@ -871,19 +871,111 @@ function renderTrainingTabs() {
 // fim renderTrainingTabs
 
 function renderTrainingContent() {
-  if (trainingViewMode === "sessao") renderTrainingSessao();
+  if (trainingViewMode === "calendario") renderTrainingCalendarTab();
+  else if (trainingViewMode === "sessao") renderTrainingSessao();
   else if (trainingViewMode === "evolucao") renderTrainingEvolucao();
   else renderTrainingPeso();
 }
 // fim renderTrainingContent
 
 function loadTrainingScreen() {
-  trainingViewMode = "sessao";
+  trainingViewMode = "calendario";
   openSessionId = null;
+  trainingCalendarMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  trainingSelectedDateKey = todayKey;
   renderTrainingTabs();
   renderTrainingContent();
 }
 // fim loadTrainingScreen
+
+// ----- Calendário -----
+let trainingCalendarMonth = new Date();
+let trainingSelectedDateKey = todayKey;
+let trainingWeekdaySplits = {};
+
+function setTrainingWeekdaySplit(weekday, name) {
+  trainingWeekdaySplits[weekday] = name;
+  saveState();
+  renderTrainingCalendarTab();
+}
+// fim setTrainingWeekdaySplit
+
+function changeTrainingCalendarMonth(delta) {
+  trainingCalendarMonth = new Date(trainingCalendarMonth.getFullYear(), trainingCalendarMonth.getMonth() + delta, 1);
+  renderTrainingCalendarTab();
+}
+// fim changeTrainingCalendarMonth
+
+function selectTrainingCalendarDate(dateKey) {
+  trainingSelectedDateKey = dateKey;
+  renderTrainingCalendarTab();
+}
+// fim selectTrainingCalendarDate
+
+function goToTodayTrainingCalendar() {
+  trainingCalendarMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  selectTrainingCalendarDate(todayKey);
+}
+// fim goToTodayTrainingCalendar
+
+function renderTrainingCalendarTab() {
+  const box = document.getElementById("trainingContent");
+  const year = trainingCalendarMonth.getFullYear();
+  const month = trainingCalendarMonth.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startOffset = firstDay.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthLabel = firstDay.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+
+  let grid = "";
+  ["D", "S", "T", "Q", "Q", "S", "S"].forEach(l => grid += `<div class="agenda-daylabel">${l}</div>`);
+  for (let i = 0; i < startOffset; i++) grid += `<div class="agenda-cell empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    const dateKey = toDateKey(date);
+    const hasSession = workoutSessions.some(s => s.date === dateKey);
+    const isToday = dateKey === todayKey;
+    const isSelected = dateKey === trainingSelectedDateKey;
+    grid += `<div class="agenda-cell ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}" onclick="selectTrainingCalendarDate('${dateKey}')">
+      ${d}${hasSession ? '<span class="agenda-dot"></span>' : ""}
+    </div>`;
+  }
+
+  const selectedDate = new Date(trainingSelectedDateKey + "T00:00:00");
+  const weekday = selectedDate.getDay();
+  const splitName = trainingWeekdaySplits[weekday] || "";
+  const sessionsToday = workoutSessions.filter(s => s.date === trainingSelectedDateKey);
+
+  const html = `
+    <div class="task-manager">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <button class="menu-btn-small" onclick="changeTrainingCalendarMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+        <strong style="text-transform:capitalize;">${monthLabel}</strong>
+        <button class="menu-btn-small" onclick="changeTrainingCalendarMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+      </div>
+      <div class="agenda-grid">${grid}</div>
+      <button class="menu-btn-small" style="margin-top:10px;" onclick="goToTodayTrainingCalendar()"><i class="fa-solid fa-calendar-day"></i> Hoje</button>
+    </div>
+
+    <div class="task-manager">
+      <h3 style="margin-top:0;">${selectedDate.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" })}</h3>
+      <div class="admin-form">
+        <label>Divisão de treino desse dia da semana</label>
+        <input type="text" id="splitInputForDay" value="${splitName}" placeholder="Ex: Perna, Braço, Descanso">
+        <button class="aura-btn" onclick="setTrainingWeekdaySplit(${weekday}, document.getElementById('splitInputForDay').value.trim())"><i class="fa-solid fa-check"></i> Salvar divisão desse dia</button>
+      </div>
+      ${sessionsToday.length === 0 ? `<p style="font-size:12px; opacity:.7; margin-top:10px;">Nenhuma sessão registrada nesse dia ainda.</p>` :
+        sessionsToday.map(s => `
+          <div class="friend-row">
+            <span>${s.split || "Treino"} — ${s.exercises.length} exercício(s)</span>
+          </div>
+          ${s.exercises.map(ex => `<div class="friend-row" style="padding-left:16px; font-size:12px; opacity:.85;"><span>${ex.name}: ${ex.weight !== null ? ex.weight+"kg x " : ""}${ex.reps}x${ex.sets}</span></div>`).join("")}
+        `).join("")}
+    </div>
+  `;
+  box.innerHTML = html;
+}
+// fim renderTrainingCalendarTab
 
 // ----- Sessão -----
 function addWorkoutSession() {
