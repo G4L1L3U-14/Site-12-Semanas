@@ -196,8 +196,29 @@
     <h2><i class="fa-solid fa-note-sticky"></i> Anotações</h2>
     <div id="notesBreadcrumb" style="font-size:12px; opacity:.8; margin-bottom:10px;"></div>
     <div class="task-manager" id="notesListBody"></div>
-    <div class="task-manager" id="notesCreateBody"></div>
-    <div id="noteEditorBox"></div>
+    <div id="notesColorPickerBox"></div>
+
+    <div id="notesFabMenu" style="position:fixed; bottom:86px; right:20px; width:210px; z-index:900;"></div>
+    <button id="notesFabBtn" onclick="toggleNotesFab()" style="position:fixed; bottom:20px; right:20px; width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg,#1a2a25,#0f1a16); border:1px solid #2ecc71; color:#eaffea; font-size:26px; box-shadow:0 0 15px rgba(46,204,113,0.5), 0 4px 12px rgba(0,0,0,0.5); cursor:pointer; z-index:901;">+</button>
+  </div>
+</div>
+
+<div id="screenNoteEditor" class="screen hidden">
+  <div class="container">
+    <button class="back-btn" onclick="closeNoteEditorScreen()">← Voltar (salve antes de sair)</button>
+    <input type="text" id="noteEditorTitleInput" placeholder="Título" style="width:100%; box-sizing:border-box; padding:12px; font-size:18px; font-weight:bold; border-radius:10px; border:1px solid rgba(46,204,113,0.4); background:rgba(0,0,0,0.5); color:#eaffea; margin-bottom:10px;">
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+      <button class="menu-btn-small" onclick="formatNoteText('bold')"><i class="fa-solid fa-bold"></i></button>
+      <button class="menu-btn-small" onclick="formatNoteText('italic')"><i class="fa-solid fa-italic"></i></button>
+      <button class="menu-btn-small" onclick="formatNoteText('underline')"><i class="fa-solid fa-underline"></i></button>
+      <button class="menu-btn-small" onclick="formatNoteText('justifyLeft')"><i class="fa-solid fa-align-left"></i></button>
+      <button class="menu-btn-small" onclick="formatNoteText('justifyCenter')"><i class="fa-solid fa-align-center"></i></button>
+      <button class="menu-btn-small" onclick="formatNoteText('justifyRight')"><i class="fa-solid fa-align-right"></i></button>
+      <button class="menu-btn-small" onclick="formatNoteText('formatBlock','H2')"><i class="fa-solid fa-heading"></i></button>
+      <button class="menu-btn-small" onclick="formatNoteText('formatBlock','P')">P</button>
+    </div>
+    <div id="noteEditorContentDiv" contenteditable="true" style="min-height:50vh; padding:14px; border-radius:12px; border:1px solid rgba(46,204,113,0.4); background:rgba(0,0,0,0.4); color:#eaffea; outline:none; line-height:1.5;"></div>
+    <button class="aura-btn" style="margin-top:12px;" onclick="saveNoteEditorContent()"><i class="fa-solid fa-check"></i> Salvar</button>
   </div>
 </div>
 
@@ -1240,7 +1261,6 @@ function acceptSharedAgendaInvite(payload) {
 
 // ===== ANOTAÇÕES (pastas recursivas, tipo Drive) =====
 let notesCurrentPath = [];
-let openNoteId = null;
 
 function getNotesFolder(path) {
   let level = notesTree;
@@ -1268,45 +1288,77 @@ function createNoteNode(kind, name) {
 }
 // fim createNoteNode
 
-function addNotesBlock() {
-  const input = document.getElementById("newNotesBlockInput");
-  const name = input.value.trim();
-  if (!name) return;
-  getCurrentNotesChildren().push(createNoteNode("block", name));
-  input.value = "";
-  saveState();
-  renderNotesScreen();
-}
-// fim addNotesBlock
+let notesFabOpen = false;
 
-function addNoteItem() {
-  const input = document.getElementById("newNoteInput");
-  const name = input.value.trim();
-  if (!name) return;
-  getCurrentNotesChildren().push(createNoteNode("note", name));
-  input.value = "";
-  saveState();
-  renderNotesScreen();
+function toggleNotesFab() {
+  notesFabOpen = !notesFabOpen;
+  renderNotesFabMenu();
 }
-// fim addNoteItem
+// fim toggleNotesFab
+
+function renderNotesFabMenu() {
+  const box = document.getElementById("notesFabMenu");
+  if (!box) return;
+  box.innerHTML = notesFabOpen ? `
+    <button class="aura-btn" style="display:block; width:100%; margin-bottom:8px;" onclick="promptNewNotesBlock()"><i class="fa-solid fa-folder-plus"></i> Nova Pasta</button>
+    <button class="aura-btn" style="display:block; width:100%;" onclick="promptNewNoteItem()"><i class="fa-solid fa-note-sticky"></i> Nova Anotação</button>
+  ` : "";
+}
+// fim renderNotesFabMenu
+
+function promptNewNotesBlock() {
+  notesFabOpen = false;
+  renderNotesFabMenu();
+  openModal({
+    title: "Nome da pasta:",
+    type: "text",
+    confirmLabel: "Criar",
+    onConfirm: (val) => {
+      const name = (val || "").trim();
+      if (!name) return;
+      getCurrentNotesChildren().push(createNoteNode("block", name));
+      saveState();
+      renderNotesScreen();
+    }
+  });
+}
+// fim promptNewNotesBlock
+
+function promptNewNoteItem() {
+  notesFabOpen = false;
+  renderNotesFabMenu();
+  openModal({
+    title: "Título da anotação:",
+    type: "text",
+    confirmLabel: "Criar",
+    onConfirm: (val) => {
+      const name = (val || "").trim();
+      if (!name) return;
+      getCurrentNotesChildren().push(createNoteNode("note", name));
+      saveState();
+      renderNotesScreen();
+    }
+  });
+}
+// fim promptNewNoteItem
 
 function openNotesFolder(id) {
   notesCurrentPath.push(id);
-  openNoteId = null;
+  openNotesMenuId = null;
   renderNotesScreen();
 }
 // fim openNotesFolder
 
 function goToNotesRoot() {
   notesCurrentPath = [];
-  openNoteId = null;
+  openNotesMenuId = null;
   renderNotesScreen();
 }
 // fim goToNotesRoot
 
 function goToNotesBreadcrumb(index) {
   notesCurrentPath = notesCurrentPath.slice(0, index + 1);
-  openNoteId = null;
+  openNotesMenuId = null;
   renderNotesScreen();
 }
 // fim goToNotesBreadcrumb
@@ -1320,7 +1372,7 @@ function deleteNoteNode(id) {
       const children = getCurrentNotesChildren();
       const idx = children.findIndex(n => n.id === id);
       if (idx !== -1) children.splice(idx, 1);
-      if (openNoteId === id) openNoteId = null;
+      if (openNotesMenuId === id) openNotesMenuId = null;
       saveState();
       renderNotesScreen();
     }
@@ -1328,17 +1380,19 @@ function deleteNoteNode(id) {
 }
 // fim deleteNoteNode
 
+let editingNoteEditorId = null;
+
 function openNoteEditor(id) {
-  openNoteId = id;
-  renderNotesScreen();
+  editingNoteEditorId = id;
+  showScreen("noteEditor");
 }
 // fim openNoteEditor
 
-function closeNoteEditor() {
-  openNoteId = null;
-  renderNotesScreen();
+function closeNoteEditorScreen() {
+  editingNoteEditorId = null;
+  showScreen("notes");
 }
-// fim closeNoteEditor
+// fim closeNoteEditorScreen
 
 function renameNoteNode(id) {
   const children = getCurrentNotesChildren();
@@ -1360,16 +1414,31 @@ function renameNoteNode(id) {
 }
 // fim renameNoteNode
 
-function saveNoteContent() {
-  if (!openNoteId) return;
-  const children = getCurrentNotesChildren();
-  const node = children.find(n => n.id === openNoteId);
+function loadNoteEditorScreen() {
+  const node = findNoteNodeById(notesTree, editingNoteEditorId);
+  if (!node) { showScreen("notes"); return; }
+  document.getElementById("noteEditorTitleInput").value = node.name;
+  document.getElementById("noteEditorContentDiv").innerHTML = node.content || "";
+}
+// fim loadNoteEditorScreen
+
+function saveNoteEditorContent() {
+  const node = findNoteNodeById(notesTree, editingNoteEditorId);
   if (!node) return;
-  node.content = document.getElementById("noteContentInput").value;
+  const newTitle = document.getElementById("noteEditorTitleInput").value.trim();
+  if (newTitle) node.name = newTitle;
+  node.content = document.getElementById("noteEditorContentDiv").innerHTML;
   saveState();
   showToast("Anotação salva!");
 }
-// fim saveNoteContent
+// fim saveNoteEditorContent
+
+function formatNoteText(command, value) {
+  document.getElementById("noteEditorContentDiv").focus();
+  document.execCommand(command, false, value || null);
+}
+// fim formatNoteText
+
 
 function regenerateNoteIds(node) {
   const copy = { ...node, id: (node.kind === "block" ? "nb" : "nt") + Date.now() + Math.floor(Math.random() * 100000) };
@@ -1416,6 +1485,124 @@ function shareNoteViaChat(id) {
 }
 // fim shareNoteViaChat
 
+const NOTE_FOLDER_COLORS = ["#e57373", "#ba68c8", "#4fc3f7", "#66bb6a", "#a1887f", "#ff8a65", "#9575cd", "#4dd0e1", "#81c784", "#bcaaa4", "#ffb74d", "#f06292"];
+let openNotesMenuId = null;
+
+function toggleNotesItemMenu(id, event) {
+  if (event) event.stopPropagation();
+  openNotesMenuId = (openNotesMenuId === id) ? null : id;
+  renderNotesScreen();
+}
+// fim toggleNotesItemMenu
+
+function moveNoteNode(id, direction) {
+  const children = getCurrentNotesChildren();
+  const idx = children.findIndex(n => n.id === id);
+  if (idx === -1) return;
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= children.length) return;
+  [children[idx], children[newIdx]] = [children[newIdx], children[idx]];
+  saveState();
+  renderNotesScreen();
+}
+// fim moveNoteNode
+
+function findNoteNodeById(nodes, id) {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    if (n.kind === "block") {
+      const found = findNoteNodeById(n.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+// fim findNoteNodeById
+
+function isDescendantFolder(node, targetId) {
+  if (node.kind !== "block") return false;
+  for (const child of node.children) {
+    if (child.id === targetId) return true;
+    if (child.kind === "block" && isDescendantFolder(child, targetId)) return true;
+  }
+  return false;
+}
+// fim isDescendantFolder
+
+function listAllFolders(nodes, path, out) {
+  nodes.forEach(n => {
+    if (n.kind !== "block") return;
+    out.push({ id: n.id, label: path.concat(n.name).join(" / ") });
+    listAllFolders(n.children, path.concat(n.name), out);
+  });
+  return out;
+}
+// fim listAllFolders
+
+function moveNoteToFolder(id) {
+  openNotesMenuId = null;
+  renderNotesScreen();
+  const children = getCurrentNotesChildren();
+  const node = children.find(n => n.id === id);
+  if (!node) return;
+
+  const allFolders = listAllFolders(notesTree, [], []);
+  const valid = allFolders.filter(f => f.id !== node.id && !(node.kind === "block" && isDescendantFolder(node, f.id)));
+  if (valid.length === 0) { showToast("Nenhuma pasta disponível pra mover."); return; }
+
+  const optionsText = valid.map(f => f.label).join(", ");
+  openModal({
+    title: `Mover pra qual pasta? Digite o caminho exato. Opções: ${optionsText}`,
+    type: "text",
+    confirmLabel: "Mover",
+    onConfirm: (val) => {
+      const typed = (val || "").trim().toLowerCase();
+      const target = valid.find(f => f.label.toLowerCase() === typed);
+      if (!target) { showToast("Pasta não encontrada — digite o caminho exato mostrado."); return; }
+      const targetNode = findNoteNodeById(notesTree, target.id);
+      if (!targetNode) return;
+
+      const curChildren = getCurrentNotesChildren();
+      const idx = curChildren.findIndex(n => n.id === id);
+      if (idx === -1) return;
+      const [moved] = curChildren.splice(idx, 1);
+      targetNode.children.push(moved);
+      saveState();
+      renderNotesScreen();
+    }
+  });
+}
+// fim moveNoteToFolder
+
+function setNoteFolderColor(id, color) {
+  const children = getCurrentNotesChildren();
+  const node = children.find(n => n.id === id);
+  if (!node) return;
+  node.color = color;
+  saveState();
+  closeNotesColorPicker();
+}
+// fim setNoteFolderColor
+
+function openColorPicker(id) {
+  openNotesMenuId = null;
+  const swatches = NOTE_FOLDER_COLORS.map(c => `<button onclick="setNoteFolderColor('${id}','${c}')" style="width:36px;height:36px;border-radius:50%;background:${c};border:2px solid rgba(255,255,255,0.3);margin:4px;cursor:pointer;"></button>`).join("");
+  document.getElementById("notesColorPickerBox").innerHTML = `
+    <div style="position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; display:flex; align-items:center; justify-content:center;" onclick="closeNotesColorPicker()">
+      <div class="modal-box" onclick="event.stopPropagation();">
+        <p>Cor da pasta</p>
+        <div style="display:flex; flex-wrap:wrap; justify-content:center; max-width:260px;">${swatches}</div>
+      </div>
+    </div>`;
+}
+// fim openColorPicker
+
+function closeNotesColorPicker() {
+  document.getElementById("notesColorPickerBox").innerHTML = "";
+  renderNotesScreen();
+}
+// fim closeNotesColorPicker
+
 function renderNotesScreen() {
   const { children } = getNotesFolder(notesCurrentPath);
 
@@ -1432,51 +1619,35 @@ function renderNotesScreen() {
   if (children.length === 0) {
     list.innerHTML = `<p style="font-size:12px; opacity:.7;">Vazio. Crie uma pasta ou anotação abaixo.</p>`;
   } else {
-    list.innerHTML = children.map(node => `
-      <div class="task-row" onclick="${node.kind === "block" ? `openNotesFolder('${node.id}')` : `openNoteEditor('${node.id}')`}">
-        <i class="fa-solid ${node.kind === "block" ? "fa-folder" : "fa-note-sticky"}"></i> ${node.name}
-        <div class="task-actions" onclick="event.stopPropagation();">
-          <button class="aura-btn" onclick="renameNoteNode('${node.id}')"><i class="fa-solid fa-pen"></i> Renomear</button>
-          <button class="aura-btn" onclick="shareNoteViaChat('${node.id}')"><i class="fa-solid fa-share"></i> Compartilhar</button>
-          <button class="aura-danger" onclick="deleteNoteNode('${node.id}')"><i class="fa-solid fa-trash"></i> Excluir</button>
-        </div>
-      </div>
-    `).join("");
-  }
-
-  document.getElementById("notesCreateBody").innerHTML = `
-    <div class="admin-form">
-      <input type="text" id="newNotesBlockInput" placeholder="Nome da pasta">
-      <button class="aura-btn" onclick="addNotesBlock()"><i class="fa-solid fa-folder-plus"></i> Criar pasta</button>
-      <input type="text" id="newNoteInput" placeholder="Título da anotação" style="margin-top:10px;">
-      <button class="aura-btn" onclick="addNoteItem()"><i class="fa-solid fa-note-sticky"></i> Criar anotação</button>
-    </div>
-  `;
-
-  const editorBox = document.getElementById("noteEditorBox");
-  if (openNoteId) {
-    const node = children.find(n => n.id === openNoteId);
-    if (node && node.kind === "note") {
-      editorBox.innerHTML = `
-        <div class="task-manager">
-          <h3 style="margin-top:0;">${node.name}</h3>
-          <textarea id="noteContentInput" rows="8" style="width:100%; box-sizing:border-box; padding:10px; border-radius:10px; border:1px solid rgba(46,204,113,0.4); background:rgba(0,0,0,0.5); color:#eaffea; font-family:inherit;">${node.content || ""}</textarea>
-          <button class="aura-btn" onclick="saveNoteContent()"><i class="fa-solid fa-check"></i> Salvar</button>
-          <button class="menu-btn-small" onclick="closeNoteEditor()">Fechar</button>
+    list.innerHTML = children.map(node => {
+      const isMenuOpen = openNotesMenuId === node.id;
+      const folderColor = node.kind === "block" ? (node.color || "#2ecc71") : null;
+      return `
+        <div class="task-row" onclick="${node.kind === "block" ? `openNotesFolder('${node.id}')` : `openNoteEditor('${node.id}')`}">
+          <span><i class="fa-solid ${node.kind === "block" ? "fa-folder" : "fa-note-sticky"}" ${folderColor ? `style="color:${folderColor};"` : ""}></i> ${node.name}</span>
+          <button class="menu-btn-small" style="float:right;" onclick="toggleNotesItemMenu('${node.id}', event)"><i class="fa-solid fa-ellipsis-vertical"></i></button>
+          ${isMenuOpen ? `
+            <div class="task-actions" onclick="event.stopPropagation();" style="flex-wrap:wrap;">
+              <button class="aura-btn" onclick="renameNoteNode('${node.id}')"><i class="fa-solid fa-pen"></i> Renomear</button>
+              <button class="aura-btn" onclick="shareNoteViaChat('${node.id}')"><i class="fa-solid fa-share"></i> Compartilhar</button>
+              ${node.kind === "block" ? `<button class="aura-btn" onclick="openColorPicker('${node.id}')"><i class="fa-solid fa-palette"></i> Cor</button>` : ""}
+              <button class="menu-btn-small" onclick="moveNoteNode('${node.id}', -1)"><i class="fa-solid fa-arrow-up"></i></button>
+              <button class="menu-btn-small" onclick="moveNoteNode('${node.id}', 1)"><i class="fa-solid fa-arrow-down"></i></button>
+              <button class="aura-btn" onclick="moveNoteToFolder('${node.id}')"><i class="fa-solid fa-folder-open"></i> Mover pra pasta</button>
+              <button class="aura-danger" onclick="deleteNoteNode('${node.id}')"><i class="fa-solid fa-trash"></i> Excluir</button>
+            </div>` : ""}
         </div>`;
-    } else {
-      editorBox.innerHTML = "";
-    }
-  } else {
-    editorBox.innerHTML = "";
+    }).join("");
   }
 }
 // fim renderNotesScreen
 
 function loadNotesScreen() {
   notesCurrentPath = [];
-  openNoteId = null;
+  openNotesMenuId = null;
+  notesFabOpen = false;
   renderNotesScreen();
+  renderNotesFabMenu();
 }
 // fim loadNotesScreen
 
@@ -1623,6 +1794,7 @@ function pullTasksFromCloud() {
       notesTree = cloud.notesTree || [];
       workoutSessions = cloud.workoutSessions || [];
       bodyWeightLog = cloud.bodyWeightLog || [];
+      trainingWeekdaySplits = cloud.trainingWeekdaySplits || {};
       agendaItems = cloud.agendaItems || [];
       weekStart = cloud.weekStart || currentSundayKey;
 
@@ -1644,7 +1816,7 @@ function pullTasksFromCloud() {
 function syncTasksToFirestore() {
   if (!currentUser) return;
   db.collection("users").doc(currentUser.uid).set({
-    sync: { tasks, pendingTasks, history, weekStart, subtaskBlocks, checklists, agendaItems, notesTree, workoutSessions, bodyWeightLog }
+    sync: { tasks, pendingTasks, history, weekStart, subtaskBlocks, checklists, agendaItems, notesTree, workoutSessions, bodyWeightLog, trainingWeekdaySplits }
   }, { merge: true }).catch(() => {});
 }
 // fim syncTasksToFirestore
